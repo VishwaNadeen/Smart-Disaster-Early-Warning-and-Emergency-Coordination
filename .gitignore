@@ -1,0 +1,275 @@
+# ============================================================
+# Smart Disaster Early Warning & Emergency Coordination
+# ============================================================
+
+# ============================================================
+# Operating System
+# ============================================================
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.directory
+
+
+# ============================================================
+# IDE / Editors
+# ============================================================
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# JetBrains / IntelliJ / Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+
+# ============================================================
+# Node.js / JavaScript / TypeScript
+# ============================================================
+
+# Dependencies
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime data
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Build output
+dist/
+build/
+
+# Vite
+.vite/
+
+# TypeScript
+*.tsbuildinfo
+
+# ESLint / tooling caches
+.eslintcache
+.stylelintcache
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Keep example environment files
+!.env.example
+!.env.example.*
+
+# Optional npm cache
+.npm/
+
+# Optional parcel cache
+.parcel-cache/
+
+# Optional turbo cache
+.turbo/
+
+
+# ============================================================
+# NestJS
+# ============================================================
+
+# NestJS build output
+apps/backend/dist/
+
+# NestJS debug
+apps/backend/.nestjs/
+
+
+# ============================================================
+# MongoDB
+# ============================================================
+
+# Local MongoDB data
+data/
+mongodb-data/
+.mongo/
+
+# MongoDB logs
+*.mongodb.log
+
+
+# ============================================================
+# React / Vite
+# ============================================================
+
+# React/Vite build output
+apps/web/dist/
+
+# Vite cache
+apps/web/.vite/
+
+
+# ============================================================
+# Flutter / Dart
+# ============================================================
+
+# Flutter/Dart generated files
+.dart_tool/
+.packages
+.pub/
+.pub-cache/
+
+# Flutter build output
+build/
+
+# Flutter generated plugin registrant
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Flutter generated localization files
+.flutter-plugins-dependencies
+
+# Dart tool
+.dart_tool/
+
+# Flutter IDE
+.metadata
+
+# Generated Android/iOS files
+**/Generated.xcconfig
+**/flutter_export_environment.sh
+
+# Android generated files
+**/android/.gradle/
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/android/local.properties
+**/android/.idea/
+
+# iOS generated files
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+
+# Flutter web generated files
+**/web/flutter_service_worker.js
+**/web/flutter_bootstrap.js
+
+# Flutter macOS generated files
+**/macos/Flutter/ephemeral/
+
+# Flutter Linux generated files
+**/linux/flutter/ephemeral/
+
+# Flutter Windows generated files
+**/windows/flutter/ephemeral/
+
+
+# ============================================================
+# Testing
+# ============================================================
+
+# Test coverage
+coverage/
+*.lcov
+
+# Vitest
+.vitest/
+
+# Jest
+.jest/
+
+
+# ============================================================
+# Temporary files
+# ============================================================
+
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.orig
+
+# OS/editor temporary files
+*.log
+
+
+# ============================================================
+# Local configuration
+# ============================================================
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local secrets
+secrets/
+*.pem
+*.key
+
+
+# ============================================================
+# Database / Local development
+# ============================================================
+
+# Local database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Prisma (not currently used, but prevent accidental commits)
+prisma/.env
+prisma/*.db
+
+
+# ============================================================
+# Generated documentation / exports
+# ============================================================
+
+*.pdf
+*.zip
+
+# Keep assignment/report files only if intentionally committed.
+# Remove the above section if PDFs should be version-controlled.
+
+
+# ============================================================
+# Miscellaneous
+# ============================================================
+
+.DS_Store
+.history/
