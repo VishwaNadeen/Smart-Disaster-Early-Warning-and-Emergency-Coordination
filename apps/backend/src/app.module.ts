@@ -24,7 +24,7 @@ import { OfficerModule } from './officer/officer.module';
 // Register shelter management endpoints and services.
 import { SheltersModule } from './shelters/shelters.module';
 
-
+import { ReliefSuppliesModule } from './relief-supplies/relief-supplies.module';
 
 @Module({
   imports: [
@@ -45,6 +45,8 @@ import { SheltersModule } from './shelters/shelters.module';
     OfficerModule,
 
     SheltersModule,
+
+    ReliefSuppliesModule,
   ],
 })
 export class AppModule {}
