@@ -21,6 +21,11 @@ import { AdminModule } from './admin/admin.module';
 
 import { OfficerModule } from './officer/officer.module';
 
+// Register shelter management endpoints and services.
+import { SheltersModule } from './shelters/shelters.module';
+
+
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -38,6 +43,8 @@ import { OfficerModule } from './officer/officer.module';
     AdminModule,
 
     OfficerModule,
+
+    SheltersModule,
   ],
 })
 export class AppModule {}

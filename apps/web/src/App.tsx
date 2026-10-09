@@ -1,122 +1,89 @@
+
 import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+
+import Login, { type AuthUser } from './components/Login'
+import DmcDashboard from './pages/dmc/DmcDashboard'
+import AdminDashboard from './pages/admin/AdminDashboard'
+import ShelterStaffDashboard from './pages/shelter/ShelterStaffDashboard'
+
+interface Session {
+  token: string
+  user: AuthUser
+}
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [session, setSession] = useState<Session | null>(null)
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+  function handleLogin(token: string, user: AuthUser) {
+    setSession({ token, user })
+  }
 
-      <div className="ticks"></div>
+  function handleLogout() {
+    setSession(null)
+  }
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+  // Show the common login screen when nobody is signed in.
+  if (!session) {
+    return <Login onLogin={handleLogin} />
+  }
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+  const { user, token } = session
+
+  // DMC and District Officers share one dashboard.
+  switch (user.role) {
+    case 'DUTY_OFFICER':
+    case 'DISTRICT_OFFICER':
+      return (
+        <DmcDashboard
+          token={token}
+          fullName={user.fullName}
+          email={user.email}
+          role={user.role}
+          district={user.district}
+          onLogout={handleLogout}
+        />
+      )
+
+    case 'ADMIN':
+    case 'SYSTEM_ADMIN':
+      return (
+        <AdminDashboard
+          fullName={user.fullName}
+          email={user.email}
+          onLogout={handleLogout}
+        />
+      )
+
+    case 'SHELTER_STAFF':
+      return (
+        <ShelterStaffDashboard
+          fullName={user.fullName}
+          email={user.email}
+          district={user.district}
+          onLogout={handleLogout}
+        />
+      )
+
+    default:
+      return (
+        <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
+          <section className="rounded-xl bg-white p-8 text-center shadow">
+            <h1 className="text-xl font-bold text-slate-900">
+              Access denied
+            </h1>
+            <p className="mt-2 text-sm text-slate-600">
+              Your account is not authorized for these dashboards.
+            </p>
+            <button
+              onClick={handleLogout}
+              className="mt-5 rounded-lg bg-blue-600 px-5 py-2.5 text-white hover:bg-blue-700"
+            >
+              Back to login
+            </button>
+          </section>
+        </main>
+      )
+  }
 }
 
 export default App

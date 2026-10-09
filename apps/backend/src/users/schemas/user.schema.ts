@@ -1,3 +1,4 @@
+
 import {
   Prop,
   Schema,
@@ -6,10 +7,10 @@ import {
 
 import {
   HydratedDocument,
+  Types,
 } from 'mongoose';
 
-export type UserDocument =
-  HydratedDocument<User>;
+export type UserDocument = HydratedDocument<User>;
 
 export enum UserRole {
   CITIZEN = 'CITIZEN',
@@ -19,6 +20,7 @@ export enum UserRole {
   ANALYST = 'ANALYST',
   ADMIN = 'ADMIN',
   SYSTEM_ADMIN = 'SYSTEM_ADMIN',
+  SHELTER_STAFF = 'SHELTER_STAFF',
 }
 
 @Schema({
@@ -106,14 +108,22 @@ export class User {
   })
   officeAddress?: string;
 
-  // Admin-controlled assignment. Officers must never update this directly.
+  // Admin-controlled district assignments.
   @Prop({
     type: [String],
     default: [],
   })
   assignedDistricts: string[];
 
-  // Store only SHA-256 token hash, never raw email verification token.
+  // Admin-controlled shelter assignments for shelter staff.
+  @Prop({
+    type: [Types.ObjectId],
+    ref: 'Shelter',
+    default: [],
+  })
+  assignedShelterIds: Types.ObjectId[];
+
+  // Store only the SHA-256 token hash.
   @Prop()
   emailVerificationTokenHash?: string;
 
@@ -123,10 +133,8 @@ export class User {
   @Prop()
   deletedAt?: Date;
 
-  @Prop()
   createdAt: Date;
 
-  @Prop()
   updatedAt: Date;
 }
 
