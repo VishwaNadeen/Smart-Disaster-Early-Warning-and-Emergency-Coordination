@@ -1,0 +1,2 @@
+Expected existing user schema import is `../users/user.schema` exporting `User` and `UserSchema`.
+If your project uses `user.schema.ts` inside `src/users/schemas/`, update both admin.module.ts and officer.module.ts import paths.

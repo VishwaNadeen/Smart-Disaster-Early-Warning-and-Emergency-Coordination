@@ -18,6 +18,7 @@ export enum UserRole {
   DISTRICT_OFFICER = 'DISTRICT_OFFICER',
   ANALYST = 'ANALYST',
   ADMIN = 'ADMIN',
+  SYSTEM_ADMIN = 'SYSTEM_ADMIN',
 }
 
 @Schema({
@@ -64,13 +65,68 @@ export class User {
   })
   isActive: boolean;
 
+  @Prop({
+    default: false,
+    index: true,
+  })
+  emailVerified: boolean;
+
+  @Prop({
+    default: true,
+  })
+  mustCompleteProfile: boolean;
+
+  @Prop({
+    trim: true,
+  })
+  officerIdNumber?: string;
+
+  @Prop({
+    trim: true,
+  })
+  dmcNumber?: string;
+
+  @Prop({
+    trim: true,
+  })
+  workingLocation?: string;
+
+  @Prop({
+    trim: true,
+  })
+  officePhoneNumber?: string;
+
+  @Prop({
+    trim: true,
+  })
+  residentialAddress?: string;
+
+  @Prop({
+    trim: true,
+  })
+  officeAddress?: string;
+
+  // Admin-controlled assignment. Officers must never update this directly.
+  @Prop({
+    type: [String],
+    default: [],
+  })
+  assignedDistricts: string[];
+
+  // Store only SHA-256 token hash, never raw email verification token.
+  @Prop()
+  emailVerificationTokenHash?: string;
+
+  @Prop()
+  emailVerificationExpiresAt?: Date;
+
   @Prop()
   deletedAt?: Date;
 
   @Prop()
   createdAt: Date;
 
-  @Prop()   
+  @Prop()
   updatedAt: Date;
 }
 

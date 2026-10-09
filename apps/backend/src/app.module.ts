@@ -17,6 +17,10 @@ import {
   ReportsModule,
 } from './reports/reports.module';
 
+import { AdminModule } from './admin/admin.module';
+
+import { OfficerModule } from './officer/officer.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -30,6 +34,10 @@ import {
     UsersModule,
 
     ReportsModule,
+
+    AdminModule,
+
+    OfficerModule,
   ],
 })
 export class AppModule {}
