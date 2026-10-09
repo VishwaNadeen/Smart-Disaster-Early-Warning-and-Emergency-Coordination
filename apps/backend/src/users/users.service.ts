@@ -23,7 +23,6 @@ export class UsersService {
     private readonly userModel: Model<UserDocument>,
   ) {}
 
-
   async getProfile(
     userId: string,
   ): Promise<{
@@ -40,22 +39,22 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    // Convert the Mongoose result into a plain object
-    // so TypeScript does not infer a deeply nested Mongoose type.
-    const userData: Record<string, unknown> = {
+    const data: Record<string, unknown> = {
       ...user,
     };
 
-    // Keep generic citizen fields separate from
-    // the DMC Officer's own profile information.
     if (user.role === UserRole.DUTY_OFFICER) {
-      delete userData.address;
-      delete userData.district;
+      delete data.address;
+      delete data.district;
+      delete data.livingCity;
+      delete data.fcmTokens;
+      delete data.whatsappOptIn;
+      delete data.whatsappOptInAt;
     }
 
     return {
       success: true,
-      data: userData,
+      data,
     };
   }
 
@@ -66,38 +65,54 @@ export class UsersService {
     const existingUser = await this.userModel
       .findById(userId)
       .select('role')
-      .lean();
+      .lean()
+      .exec();
 
     if (!existingUser) {
       throw new NotFoundException('User not found');
     }
 
-    // Duty Officers must use /api/officer/me/profile.
-    // Their residential address and working districts
-    // must not be managed through the generic endpoint.
-    if (existingUser.role === UserRole.DUTY_OFFICER) {
+    if (existingUser.role !== UserRole.CITIZEN &&
+        existingUser.role !== UserRole.VOLUNTEER) {
       throw new BadRequestException(
-        'Duty Officer profiles must be updated through ' +
-          '/api/officer/me/profile. Personal address and ' +
-          'assigned working districts are separate.',
+        'This endpoint is only for citizen and volunteer profiles.',
       );
+    }
+
+    const update: Record<string, unknown> = {};
+
+    if (dto.fullName !== undefined) {
+      update.fullName = dto.fullName.trim();
+    }
+
+    if (dto.phone !== undefined) {
+      update.phone = dto.phone.trim();
+    }
+
+    if (dto.district !== undefined) {
+      update.district = dto.district.trim();
+    }
+
+    if (dto.livingCity !== undefined) {
+      update.livingCity = dto.livingCity.trim();
+    }
+
+    if (dto.address !== undefined) {
+      update.address = dto.address.trim();
     }
 
     const user = await this.userModel
       .findByIdAndUpdate(
         userId,
-        {
-          $set: {
-            ...dto,
-          },
-        },
+        { $set: update },
         {
           new: true,
           runValidators: true,
         },
       )
       .select('-passwordHash')
-      .lean();
+      .lean()
+      .exec();
 
     if (!user) {
       throw new NotFoundException('User not found');
@@ -119,6 +134,10 @@ export class UsersService {
 
     user.isActive = false;
     user.deletedAt = new Date();
+
+    // Prevent further notifications to deactivated accounts.
+    user.fcmTokens = [];
+    user.whatsappOptIn = false;
 
     await user.save();
 

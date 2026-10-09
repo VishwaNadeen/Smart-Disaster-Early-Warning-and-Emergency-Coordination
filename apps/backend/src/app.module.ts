@@ -21,6 +21,8 @@ import { AdminModule } from './admin/admin.module';
 
 import { OfficerModule } from './officer/officer.module';
 
+import { HazardAlertsModule } from './hazard-alerts/hazard-alerts.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -38,6 +40,8 @@ import { OfficerModule } from './officer/officer.module';
     AdminModule,
 
     OfficerModule,
+
+    HazardAlertsModule,
   ],
 })
 export class AppModule {}
