@@ -56,11 +56,31 @@ export class User {
   })
   role: UserRole;
 
-  @Prop()
+  @Prop({ trim: true, index: true })
   district?: string;
 
-  @Prop()
+  @Prop({ trim: true, index: true })
+  livingCity?: string;
+
+  @Prop({ trim: true })
   address?: string;
+
+  // Firebase Cloud Messaging tokens for Flutter devices
+  @Prop({
+    type: [String],
+    default: [],
+  })
+  fcmTokens: string[];
+
+  // WhatsApp messages are only sent with recorded consent
+  @Prop({
+    type: Boolean,
+    default: false,
+  })
+  whatsappOptIn: boolean;
+
+  @Prop()
+  whatsappOptInAt?: Date;
 
   @Prop({
     default: true,

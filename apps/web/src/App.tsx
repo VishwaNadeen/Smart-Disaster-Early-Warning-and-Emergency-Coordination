@@ -39,7 +39,8 @@ function App() {
           fullName={user.fullName}
           email={user.email}
           role={user.role}
-          district={user.district}
+          district={user.district || user.assignedDistricts?.[0]}
+          assignedDistricts={user.assignedDistricts}
           onLogout={handleLogout}
         />
       )

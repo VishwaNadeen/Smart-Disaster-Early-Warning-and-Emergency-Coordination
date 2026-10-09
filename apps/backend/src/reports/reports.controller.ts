@@ -5,8 +5,10 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
@@ -44,6 +46,10 @@ import {
 import {
   UpdateReportDto,
 } from './dto/update-report.dto';
+
+import {
+  UpdateReportStatusDto,
+} from './dto/update-report-status.dto';
 
 const uploadDirectory =
   './uploads/reports';
@@ -122,14 +128,19 @@ const reportUploadOptions = {
 };
 
 @Controller('reports')
-@UseGuards(JwtAuthGuard)
 export class ReportsController {
   constructor(
     private readonly reportsService:
       ReportsService,
   ) {}
 
+  @Get('districts')
+  getDistricts(): Promise<{ success: boolean; data: string[] }> {
+    return this.reportsService.getDistricts();
+  }
+
   @Post()
+  @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileInterceptor(
       'photo',
@@ -155,6 +166,7 @@ export class ReportsController {
   }
 
   @Get('my')
+  @UseGuards(JwtAuthGuard)
   findMyReports(
     @Req() req: any,
   ) {
@@ -164,6 +176,7 @@ export class ReportsController {
   }
 
   @Get('my/:id')
+  @UseGuards(JwtAuthGuard)
   findMyReport(
     @Req() req: any,
 
@@ -178,6 +191,7 @@ export class ReportsController {
   }
 
   @Put('my/:id')
+  @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileInterceptor(
       'photo',
@@ -208,6 +222,7 @@ export class ReportsController {
   }
 
   @Delete('my/:id')
+  @UseGuards(JwtAuthGuard)
   delete(
     @Req() req: any,
 
@@ -218,6 +233,70 @@ export class ReportsController {
       req.user.id,
 
       id,
+    );
+  }
+
+  @Get()
+  @UseGuards(JwtAuthGuard)
+  findAll(
+    @Req() req: any,
+
+    @Query('district') district?: string,
+
+    @Query('status') status?: string,
+
+    @Query('hazardType') hazardType?: string,
+
+    @Query('search') search?: string,
+  ): Promise<{ success: boolean; count: number; data: any[] }> {
+    return this.reportsService.findAll(
+      req.user.id,
+      {
+        district,
+        status,
+        hazardType,
+        search,
+      },
+    );
+  }
+
+  @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  findById(
+    @Param('id') id: string,
+  ): Promise<{ success: boolean; data: any }> {
+    return this.reportsService.findById(id);
+  }
+
+  @Patch(':id/status')
+  @UseGuards(JwtAuthGuard)
+  updateStatusPatch(
+    @Req() req: any,
+
+    @Param('id') id: string,
+
+    @Body() dto: UpdateReportStatusDto,
+  ): Promise<{ success: boolean; message: string; data: any }> {
+    return this.reportsService.updateStatus(
+      id,
+      req.user.id,
+      dto,
+    );
+  }
+
+  @Put(':id/status')
+  @UseGuards(JwtAuthGuard)
+  updateStatusPut(
+    @Req() req: any,
+
+    @Param('id') id: string,
+
+    @Body() dto: UpdateReportStatusDto,
+  ): Promise<{ success: boolean; message: string; data: any }> {
+    return this.reportsService.updateStatus(
+      id,
+      req.user.id,
+      dto,
     );
   }
 }

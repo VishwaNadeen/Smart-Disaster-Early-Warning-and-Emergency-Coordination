@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
   Activity,
+  AlertTriangle,
   Bell,
   Building2,
   ChevronDown,
@@ -17,10 +18,15 @@ import {
   Users,
   RefreshCw,
   Pencil,
+  ShieldAlert,
+  Megaphone,
 } from 'lucide-react'
 
 import CreateShelterForm from './CreateShelterForm'
 import EditShelterForm, { type ShelterToEdit } from './EditShelterForm'
+import DisasterReportsSection from './DisasterReportsSection'
+import DisasterWarningsSection from './DisasterWarningsSection'
+import RescueTeamsSection from './RescueTeamsSection'
 
 const API_URL = 'http://localhost:3000/api'
 
@@ -30,12 +36,16 @@ interface DmcDashboardProps {
   email: string
   role: string
   district?: string
+  assignedDistricts?: string[]
   onLogout: () => void
 }
 
 type DashboardSection =
   | 'Overview'
   | 'Shelters'
+  | 'Disaster Reports'
+  | 'Warning Alerts'
+  | 'Rescue Teams'
   | 'Occupancy Monitoring'
   | 'Occupancy History'
 
@@ -54,6 +64,9 @@ interface ShelterApiResponse {
 const navigation = [
   { label: 'Overview' as const, icon: LayoutDashboard },
   { label: 'Shelters' as const, icon: House },
+  { label: 'Disaster Reports' as const, icon: AlertTriangle },
+  { label: 'Warning Alerts' as const, icon: Megaphone },
+  { label: 'Rescue Teams' as const, icon: ShieldAlert },
   { label: 'Occupancy Monitoring' as const, icon: Users },
   { label: 'Occupancy History' as const, icon: ClipboardList },
 ]
@@ -94,6 +107,7 @@ export default function DmcDashboard({
   email,
   role,
   district,
+  assignedDistricts,
   onLogout,
 }: DmcDashboardProps) {
   const [activeSection, setActiveSection] =
@@ -108,6 +122,61 @@ export default function DmcDashboard({
   const [isLoadingShelters, setIsLoadingShelters] = useState(false)
   const [shelterError, setShelterError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
+  const [pendingReportsCount, setPendingReportsCount] = useState(0)
+  const [activeWarningsCount, setActiveWarningsCount] = useState(0)
+  const [rescueTeamsCount, setRescueTeamsCount] = useState(0)
+
+  useEffect(() => {
+    async function fetchPendingCount() {
+      try {
+        const query = district ? `?district=${encodeURIComponent(district)}` : ''
+        const res = await fetch(`${API_URL}/reports${query}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const data = await res.json()
+        const list = Array.isArray(data?.data) ? data.data : []
+        const pending = list.filter((r: any) => r.status === 'PENDING_VERIFICATION').length
+        setPendingReportsCount(pending)
+      } catch {
+        // silent fallback
+      }
+    }
+    void fetchPendingCount()
+  }, [token, district])
+
+  useEffect(() => {
+    async function fetchWarningsCount() {
+      try {
+        const res = await fetch(`${API_URL}/hazard-alerts`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const data = await res.json()
+        const list = Array.isArray(data?.data) ? data.data : []
+        const active = list.filter((a: any) => a.status === 'PUBLISHED').length
+        setActiveWarningsCount(active)
+      } catch {
+        // silent fallback
+      }
+    }
+    void fetchWarningsCount()
+  }, [token])
+
+  useEffect(() => {
+    async function fetchTeamsCount() {
+      try {
+        const query = district ? `?district=${encodeURIComponent(district)}` : ''
+        const res = await fetch(`${API_URL}/rescue-teams${query}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const data = await res.json()
+        const count = Array.isArray(data?.data) ? data.data.length : 0
+        setRescueTeamsCount(count)
+      } catch {
+        // silent fallback
+      }
+    }
+    void fetchTeamsCount()
+  }, [token, district])
 
   const loadShelters = useCallback(async () => {
     setIsLoadingShelters(true)
@@ -251,14 +320,31 @@ export default function DmcDashboard({
                   setShowCreateForm(false)
                   setEditingShelter(null)
                 }}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition ${
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-3 text-left text-sm font-medium transition ${
                   activeSection === label
                     ? 'bg-teal-50 text-teal-700'
                     : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                <Icon size={19} />
-                {label}
+                <div className="flex items-center gap-3">
+                  <Icon size={19} />
+                  {label}
+                </div>
+                {label === 'Disaster Reports' && pendingReportsCount > 0 && (
+                  <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white shadow-xs">
+                    {pendingReportsCount}
+                  </span>
+                )}
+                {label === 'Warning Alerts' && activeWarningsCount > 0 && (
+                  <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-xs animate-pulse">
+                    {activeWarningsCount}
+                  </span>
+                )}
+                {label === 'Rescue Teams' && rescueTeamsCount > 0 && (
+                  <span className="rounded-full bg-teal-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-xs">
+                    {rescueTeamsCount}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
@@ -274,8 +360,8 @@ export default function DmcDashboard({
               <p className="truncate text-sm font-semibold">
                 {role.replaceAll('_', ' ')}
               </p>
-              <p className="truncate text-xs text-slate-500">
-                {district || 'Authorized operations'}
+              <p className="truncate text-xs font-medium text-slate-500">
+                {district ? `${district} District` : 'Authorized operations'}
               </p>
             </div>
           </div>
@@ -340,49 +426,57 @@ export default function DmcDashboard({
           </section>
 
           {/* Section heading and actions */}
-          <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                {activeSection === 'Overview'
-                  ? 'Operations Overview'
-                  : activeSection}
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Manage and monitor emergency shelter operations.
-              </p>
-            </div>
+          {activeSection !== 'Disaster Reports' &&
+            activeSection !== 'Warning Alerts' &&
+            activeSection !== 'Rescue Teams' && (
+              <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    {activeSection === 'Overview'
+                      ? 'Operations Overview'
+                      : activeSection}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {activeSection === 'Shelters'
+                      ? 'Manage and monitor emergency shelter readiness and capacity.'
+                      : 'Monitor shelter readiness and coordinate disaster response operations.'}
+                  </p>
+                </div>
 
-            <div className="flex flex-wrap gap-2">
-              {activeSection === 'Shelters' && (
-                <button
-                  type="button"
-                  onClick={() => void loadShelters()}
-                  disabled={isLoadingShelters}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                >
-                  <RefreshCw
-                    size={17}
-                    className={isLoadingShelters ? 'animate-spin' : ''}
-                  />
-                  Refresh
-                </button>
-              )}
+                <div className="flex flex-wrap gap-2">
+                  {activeSection === 'Shelters' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void loadShelters()}
+                        disabled={isLoadingShelters}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        <RefreshCw
+                          size={17}
+                          className={isLoadingShelters ? 'animate-spin' : ''}
+                        />
+                        Refresh
+                      </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveSection('Shelters')
-                  setEditingShelter(null)
-                  setShelterError('')
-                  setShowCreateForm(true)
-                }}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700"
-              >
-                <Plus size={18} />
-                Create Shelter
-              </button>
-            </div>
-          </section>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveSection('Shelters')
+                          setEditingShelter(null)
+                          setShelterError('')
+                          setShowCreateForm(true)
+                        }}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700"
+                      >
+                        <Plus size={18} />
+                        Create Shelter
+                      </button>
+                    </>
+                  )}
+                </div>
+              </section>
+            )}
 
           {/* Create shelter form */}
           {showCreateForm && (
@@ -446,38 +540,132 @@ export default function DmcDashboard({
                   />
                 </section>
 
-                <section className="rounded-xl border border-slate-200 bg-white p-6">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-bold text-slate-900">
-                        Shelter Operations
-                      </h3>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Overview of registered shelters
-                      </p>
+                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+                  <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-bold text-slate-900">
+                          Shelter Operations
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Overview of registered emergency shelters
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-teal-50 p-2.5 text-teal-700">
+                        <Building2 size={22} />
+                      </div>
                     </div>
-                    <Building2 className="text-teal-600" size={23} />
-                  </div>
 
-                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-4">
-                    <p className="text-sm text-slate-700">
-                      {shelters.length} shelter(s) loaded
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setActiveSection('Shelters')}
-                      className="text-sm font-semibold text-teal-700 hover:text-teal-900"
-                    >
-                      View shelters →
-                    </button>
-                  </div>
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-4">
+                      <p className="text-sm font-medium text-slate-700">
+                        {shelters.length} shelter(s) loaded
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection('Shelters')}
+                        className="text-sm font-semibold text-teal-700 hover:text-teal-900"
+                      >
+                        View shelters →
+                      </button>
+                    </div>
 
-                  {shelterError && (
-                    <p role="alert" className="mt-3 text-sm text-red-600">
-                      {shelterError}
-                    </p>
-                  )}
-                </section>
+                    {shelterError && (
+                      <p role="alert" className="mt-3 text-sm text-red-600">
+                        {shelterError}
+                      </p>
+                    )}
+                  </section>
+
+                  <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-bold text-slate-900">
+                          {district ? `${district} District Reports` : 'District Reports'}
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Citizen & field hazard reports
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-amber-50 p-2.5 text-amber-700">
+                        <AlertTriangle size={22} />
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-amber-50/50 p-4 border border-amber-100">
+                      <div className="flex items-center gap-2 text-sm text-slate-800">
+                        <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
+                        <span className="font-bold text-amber-900">{pendingReportsCount}</span> pending verification
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection('Disaster Reports')}
+                        className="text-sm font-semibold text-teal-700 hover:text-teal-900"
+                      >
+                        Review reports →
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-bold text-slate-900">
+                          Warning Alerts
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Push & WhatsApp broadcasts
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-red-50 p-2.5 text-red-600">
+                        <Megaphone size={22} />
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-red-50/50 p-4 border border-red-100">
+                      <div className="flex items-center gap-2 text-sm text-slate-800">
+                        <span className="inline-flex h-2 w-2 rounded-full bg-red-600 animate-ping" />
+                        <span className="font-bold text-red-900">{activeWarningsCount}</span> active bulletin(s)
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection('Warning Alerts')}
+                        className="text-sm font-semibold text-teal-700 hover:text-teal-900"
+                      >
+                        Issue / View →
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-bold text-slate-900">
+                          Rescue Teams
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Tri-Forces, Police & Relief units
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-teal-50 p-2.5 text-teal-700">
+                        <ShieldAlert size={22} />
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-teal-50/50 p-4 border border-teal-100">
+                      <div className="flex items-center gap-2 text-sm text-slate-800">
+                        <span className="inline-flex h-2 w-2 rounded-full bg-teal-500" />
+                        <span className="font-bold text-teal-900">{rescueTeamsCount}</span> registered unit(s)
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection('Rescue Teams')}
+                        className="text-sm font-semibold text-teal-700 hover:text-teal-900"
+                      >
+                        Manage teams →
+                      </button>
+                    </div>
+                  </section>
+                </div>
               </>
             )}
 
@@ -644,6 +832,44 @@ export default function DmcDashboard({
                   </div>
                 )}
               </section>
+            )}
+
+          {/* Disaster Reports section */}
+          {!showCreateForm &&
+            !editingShelter &&
+            activeSection === 'Disaster Reports' && (
+              <DisasterReportsSection
+                token={token}
+                registeredDistrict={district}
+                assignedDistricts={assignedDistricts}
+                role={role}
+                onPendingCountChange={setPendingReportsCount}
+              />
+            )}
+
+          {/* Warning Alerts section */}
+          {!showCreateForm &&
+            !editingShelter &&
+            activeSection === 'Warning Alerts' && (
+              <DisasterWarningsSection
+                token={token}
+                registeredDistrict={district}
+                assignedDistricts={assignedDistricts}
+                role={role}
+                onActiveCountChange={setActiveWarningsCount}
+              />
+            )}
+
+          {/* Rescue Teams section */}
+          {!showCreateForm &&
+            !editingShelter &&
+            activeSection === 'Rescue Teams' && (
+              <RescueTeamsSection
+                token={token}
+                registeredDistrict={district}
+                assignedDistricts={assignedDistricts}
+                role={role}
+              />
             )}
 
           {/* Occupancy sections */}

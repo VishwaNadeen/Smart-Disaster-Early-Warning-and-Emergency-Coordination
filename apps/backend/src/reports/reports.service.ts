@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -21,12 +22,22 @@ import {
 } from './schemas/report.schema';
 
 import {
+  User,
+  UserDocument,
+  UserRole,
+} from '../users/schemas/user.schema';
+
+import {
   CreateReportDto,
 } from './dto/create-report.dto';
 
 import {
   UpdateReportDto,
 } from './dto/update-report.dto';
+
+import {
+  UpdateReportStatusDto,
+} from './dto/update-report-status.dto';
 
 @Injectable()
 export class ReportsService {
@@ -36,6 +47,12 @@ export class ReportsService {
     )
     private readonly reportModel:
       Model<ReportDocument>,
+
+    @InjectModel(
+      User.name,
+    )
+    private readonly userModel:
+      Model<UserDocument>,
   ) {}
 
   private generateReportNumber() {
@@ -109,6 +126,15 @@ export class ReportsService {
         dto,
       );
 
+    const citizen = await this.userModel
+      .findById(citizenId)
+      .select('district')
+      .lean();
+
+    const district =
+      dto.district?.trim() || citizen?.district?.trim() || undefined;
+    const city = dto.city?.trim() || undefined;
+
     const report =
       await this.reportModel.create({
         reportNumber:
@@ -141,6 +167,10 @@ export class ReportsService {
 
         manualLocation:
           dto.manualLocation,
+
+        district,
+
+        city,
 
         status:
           ReportStatus.PENDING_VERIFICATION,
@@ -378,6 +408,16 @@ export class ReportsService {
         dto.manualLocation;
     }
 
+    if (dto.district !== undefined) {
+      report.district =
+        dto.district ? dto.district.trim() : undefined;
+    }
+
+    if (dto.city !== undefined) {
+      report.city =
+        dto.city ? dto.city.trim() : undefined;
+    }
+
     if (photo) {
       report.photoUrl =
         `/uploads/reports/${photo.filename}`;
@@ -538,5 +578,283 @@ export class ReportsService {
       });
 
     return !!existing;
+  }
+
+  private escapeRegex(input: string): string {
+    return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  async getDistricts(): Promise<{ success: boolean; data: string[] }> {
+    const reportDistricts = await this.reportModel
+      .distinct('district', {
+        deletedAt: { $exists: false },
+        district: { $exists: true, $ne: '' },
+      })
+      .exec();
+
+    const standardDistricts = [
+      'Ampara',
+      'Anuradhapura',
+      'Badulla',
+      'Batticaloa',
+      'Colombo',
+      'Galle',
+      'Gampaha',
+      'Hambantota',
+      'Jaffna',
+      'Kalutara',
+      'Kandy',
+      'Kegalle',
+      'Kilinochchi',
+      'Kurunegala',
+      'Mannar',
+      'Matale',
+      'Matara',
+      'Monaragala',
+      'Mullaitivu',
+      'Nuwara Eliya',
+      'Polonnaruwa',
+      'Puttalam',
+      'Ratnapura',
+      'Trincomalee',
+      'Vavuniya',
+    ];
+
+    const districtSet = new Set<string>();
+
+    for (const d of standardDistricts) {
+      if (d && d.trim()) districtSet.add(d.trim());
+    }
+
+    if (Array.isArray(reportDistricts)) {
+      for (const d of reportDistricts) {
+        if (typeof d === 'string' && d.trim()) {
+          districtSet.add(d.trim().charAt(0).toUpperCase() + d.trim().slice(1));
+        }
+      }
+    }
+
+    const userDistricts = await this.userModel
+      .distinct('assignedDistricts', { isActive: true })
+      .exec();
+    if (Array.isArray(userDistricts)) {
+      for (const d of userDistricts) {
+        if (typeof d === 'string' && d.trim()) {
+          districtSet.add(d.trim().charAt(0).toUpperCase() + d.trim().slice(1));
+        }
+      }
+    }
+
+    const userDirectDistricts = await this.userModel
+      .distinct('district', { isActive: true })
+      .exec();
+    if (Array.isArray(userDirectDistricts)) {
+      for (const d of userDirectDistricts) {
+        if (typeof d === 'string' && d.trim()) {
+          districtSet.add(d.trim().charAt(0).toUpperCase() + d.trim().slice(1));
+        }
+      }
+    }
+
+    const sorted = Array.from(districtSet).sort((a, b) => a.localeCompare(b));
+
+    return {
+      success: true,
+      data: sorted,
+    };
+  }
+
+  async findAll(
+    userId: string,
+    filters: {
+      district?: string;
+      status?: string;
+      hazardType?: string;
+      search?: string;
+    },
+  ): Promise<{ success: boolean; count: number; data: any[] }> {
+    const actor = await this.userModel
+      .findById(userId)
+      .select('role district assignedDistricts isActive fullName')
+      .exec();
+
+    if (!actor || !actor.isActive) {
+      throw new ForbiddenException('User is not authorized or is inactive.');
+    }
+
+    const andConditions: any[] = [{ deletedAt: { $exists: false } }];
+
+    if (
+      filters.district &&
+      filters.district.trim() &&
+      filters.district.trim().toUpperCase() !== 'ALL'
+    ) {
+      const cleanDistrict = filters.district.trim();
+      const dRegex = new RegExp(
+        `^${this.escapeRegex(cleanDistrict)}$`,
+        'i',
+      );
+      const dPartial = new RegExp(
+        this.escapeRegex(cleanDistrict),
+        'i',
+      );
+      andConditions.push({
+        $or: [
+          { district: dRegex },
+          { manualLocation: dPartial },
+          { city: dRegex },
+        ],
+      });
+    }
+
+    if (filters.status && filters.status.toUpperCase() !== 'ALL') {
+      andConditions.push({ status: filters.status });
+    }
+
+    if (filters.hazardType && filters.hazardType.toUpperCase() !== 'ALL') {
+      andConditions.push({ hazardType: filters.hazardType });
+    }
+
+    if (filters.search && filters.search.trim()) {
+      const searchRegex = new RegExp(
+        this.escapeRegex(filters.search.trim()),
+        'i',
+      );
+      andConditions.push({
+        $or: [
+          { reportNumber: searchRegex },
+          { description: searchRegex },
+          { manualLocation: searchRegex },
+          { city: searchRegex },
+          { district: searchRegex },
+          { customHazardType: searchRegex },
+        ],
+      });
+    }
+
+    const query = andConditions.length > 1 ? { $and: andConditions } : andConditions[0];
+
+    const reports = await this.reportModel
+      .find(query)
+      .sort({ submittedAt: -1, createdAt: -1 })
+      .lean();
+
+    const citizenIds = [
+      ...new Set(reports.map((r) => r.citizenId).filter(Boolean)),
+    ];
+    const citizens = await this.userModel
+      .find({ _id: { $in: citizenIds } })
+      .select('fullName email phone district')
+      .lean();
+
+    const citizenMap = new Map(
+      citizens.map((c) => [String(c._id), c]),
+    );
+
+    const data = reports.map((report) => {
+      const citizen = citizenMap.get(String(report.citizenId));
+      return {
+        ...report,
+        citizenName: citizen?.fullName || 'Citizen User',
+        citizenPhone: citizen?.phone || '—',
+        citizenEmail: citizen?.email || '—',
+      };
+    });
+
+    return {
+      success: true,
+      count: data.length,
+      data,
+    };
+  }
+
+  async findById(reportId: string): Promise<{ success: boolean; data: any }> {
+    const report = await this.reportModel
+      .findOne({
+        _id: reportId,
+        deletedAt: { $exists: false },
+      })
+      .lean();
+
+    if (!report) {
+      throw new NotFoundException('Report not found');
+    }
+
+    const citizen = await this.userModel
+      .findById(report.citizenId)
+      .select('fullName email phone district')
+      .lean();
+
+    return {
+      success: true,
+      data: {
+        ...report,
+        citizenName: citizen?.fullName || 'Citizen User',
+        citizenPhone: citizen?.phone || '—',
+        citizenEmail: citizen?.email || '—',
+      },
+    };
+  }
+
+  async updateStatus(
+    reportId: string,
+    officerId: string,
+    dto: UpdateReportStatusDto,
+  ): Promise<{ success: boolean; message: string; data: any }> {
+    const officer = await this.userModel
+      .findById(officerId)
+      .select('role district assignedDistricts fullName')
+      .exec();
+
+    if (!officer) {
+      throw new ForbiddenException('Officer account not found');
+    }
+
+    const report = await this.reportModel.findOne({
+      _id: reportId,
+      deletedAt: { $exists: false },
+    });
+
+    if (!report) {
+      throw new NotFoundException('Report not found');
+    }
+
+    const isOfficer =
+      officer.role === UserRole.DUTY_OFFICER ||
+      officer.role === UserRole.DISTRICT_OFFICER;
+
+    if (isOfficer && report.district) {
+      const authorizedDistricts = [
+        ...(officer.assignedDistricts ?? []),
+        ...(officer.district ? [officer.district] : []),
+      ]
+        .map((d) => d?.trim().toLowerCase())
+        .filter(Boolean);
+
+      if (
+        authorizedDistricts.length > 0 &&
+        !authorizedDistricts.includes(report.district.trim().toLowerCase())
+      ) {
+        throw new ForbiddenException(
+          'You can only verify or update reports in your registered district.',
+        );
+      }
+    }
+
+    report.status = dto.status;
+    if (dto.officerNotes !== undefined) {
+      report.officerNotes = dto.officerNotes;
+    }
+    if (dto.rejectionReason !== undefined) {
+      report.rejectionReason = dto.rejectionReason;
+    }
+
+    await report.save();
+
+    return {
+      success: true,
+      message: `Report status updated to ${dto.status}`,
+      data: report,
+    };
   }
 }

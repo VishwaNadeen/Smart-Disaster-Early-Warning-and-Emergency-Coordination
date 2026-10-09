@@ -149,7 +149,12 @@ export class AuthService {
         residentialAddress: user.residentialAddress,
 
         // Separate operational assignments
-        assignedDistricts: user.assignedDistricts,
+        assignedDistricts: user.assignedDistricts ?? [],
+        district:
+          user.district ||
+          (Array.isArray(user.assignedDistricts) && user.assignedDistricts.length > 0
+            ? user.assignedDistricts[0]
+            : undefined),
 
         // Profile completion
         emailVerified: user.emailVerified,

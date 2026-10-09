@@ -120,6 +120,8 @@ apps/backend/.nestjs/
 
 # Local MongoDB data
 data/
+!apps/web/src/data/
+!apps/web/src/data/**
 mongodb-data/
 .mongo/
 
