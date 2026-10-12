@@ -15,6 +15,7 @@ export interface AuthUser {
   email: string
   phone?: string
   district?: string
+  assignedDistricts?: string[]
   address?: string
   role: string
   isActive: boolean

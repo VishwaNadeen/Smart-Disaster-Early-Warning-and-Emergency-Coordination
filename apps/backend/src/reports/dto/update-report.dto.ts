@@ -34,4 +34,12 @@ export class UpdateReportDto {
   @IsOptional()
   @IsString()
   manualLocation?: string;
+
+  @IsOptional()
+  @IsString()
+  district?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
 }

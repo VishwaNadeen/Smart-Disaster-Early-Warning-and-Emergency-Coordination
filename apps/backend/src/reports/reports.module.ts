@@ -18,6 +18,10 @@ import {
   DisasterReport,
   ReportSchema,
 } from './schemas/report.schema';
+import {
+  User,
+  UserSchema,
+} from '../users/schemas/user.schema';
 
 @Module({
   imports: [
@@ -25,9 +29,14 @@ import {
       {
         name:
           DisasterReport.name,
-
         schema:
           ReportSchema,
+      },
+      {
+        name:
+          User.name,
+        schema:
+          UserSchema,
       },
     ]),
   ],
