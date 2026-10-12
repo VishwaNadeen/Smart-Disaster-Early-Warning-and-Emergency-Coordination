@@ -1,3 +1,4 @@
+
 import {
   Prop,
   Schema,
@@ -64,8 +65,16 @@ export class DisasterReport {
   @Prop()
   description?: string;
 
+  // Preserved for compatibility with existing reports.
   @Prop()
   photoUrl?: string;
+
+  // Paths for all uploaded attachments.
+  @Prop({
+    type: [String],
+    default: [],
+  })
+  attachments: string[];
 
   @Prop()
   latitude?: number;

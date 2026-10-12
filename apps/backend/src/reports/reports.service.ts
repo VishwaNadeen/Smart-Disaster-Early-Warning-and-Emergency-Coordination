@@ -1,7 +1,7 @@
+
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -22,22 +22,12 @@ import {
 } from './schemas/report.schema';
 
 import {
-  User,
-  UserDocument,
-  UserRole,
-} from '../users/schemas/user.schema';
-
-import {
   CreateReportDto,
 } from './dto/create-report.dto';
 
 import {
   UpdateReportDto,
 } from './dto/update-report.dto';
-
-import {
-  UpdateReportStatusDto,
-} from './dto/update-report-status.dto';
 
 @Injectable()
 export class ReportsService {
@@ -47,12 +37,6 @@ export class ReportsService {
     )
     private readonly reportModel:
       Model<ReportDocument>,
-
-    @InjectModel(
-      User.name,
-    )
-    private readonly userModel:
-      Model<UserDocument>,
   ) {}
 
   private generateReportNumber() {
@@ -68,18 +52,22 @@ export class ReportsService {
     return `RPT-${year}-${random}`;
   }
 
+  private getAttachmentUrl(
+    file: Express.Multer.File,
+  ): string {
+    return `/uploads/reports/${file.filename}`;
+  }
+
   async create(
     citizenId: string,
-
     dto: CreateReportDto,
-
-    photo?: Express.Multer.File,
+    files: Express.Multer.File[] = [],
   ) {
     /*
      * The project use case requires:
      * hazard type
      * location
-     * photo and/or description
+     * photo/attachment and/or description
      */
 
     if (
@@ -105,10 +93,10 @@ export class ReportsService {
 
     if (
       !dto.description &&
-      !photo
+      files.length === 0
     ) {
       throw new BadRequestException(
-        'At least a description or photo is required',
+        'At least a description or attachment is required',
       );
     }
 
@@ -126,14 +114,16 @@ export class ReportsService {
         dto,
       );
 
-    const citizen = await this.userModel
-      .findById(citizenId)
-      .select('district')
-      .lean();
+    const attachmentUrls =
+      files.map((file) =>
+        this.getAttachmentUrl(file),
+      );
 
-    const district =
-      dto.district?.trim() || citizen?.district?.trim() || undefined;
-    const city = dto.city?.trim() || undefined;
+    // Preserve photoUrl for existing frontend consumers.
+    const firstImage =
+      files.find((file) =>
+        file.mimetype.startsWith('image/'),
+      );
 
     const report =
       await this.reportModel.create({
@@ -151,9 +141,12 @@ export class ReportsService {
         description:
           dto.description,
 
-        photoUrl: photo
-          ? `/uploads/reports/${photo.filename}`
+        photoUrl: firstImage
+          ? this.getAttachmentUrl(firstImage)
           : undefined,
+
+        attachments:
+          attachmentUrls,
 
         latitude:
           dto.latitude
@@ -167,10 +160,6 @@ export class ReportsService {
 
         manualLocation:
           dto.manualLocation,
-
-        district,
-
-        city,
 
         status:
           ReportStatus.PENDING_VERIFICATION,
@@ -237,7 +226,6 @@ export class ReportsService {
 
   async findMyReport(
     citizenId: string,
-
     reportId: string,
   ) {
     const report =
@@ -266,12 +254,9 @@ export class ReportsService {
 
   async update(
     citizenId: string,
-
     reportId: string,
-
     dto: UpdateReportDto,
-
-    photo?: Express.Multer.File,
+    files: Express.Multer.File[] = [],
   ) {
     const report =
       await this.reportModel.findOne({
@@ -292,11 +277,8 @@ export class ReportsService {
 
     const editableStatuses = [
       ReportStatus.DRAFT,
-
       ReportStatus.PENDING_SYNC,
-
       ReportStatus.PENDING_VERIFICATION,
-
       ReportStatus.NEEDS_MORE_INFO,
     ];
 
@@ -315,22 +297,25 @@ export class ReportsService {
         ? dto.description
         : report.description;
 
-    const hasPhoto =
-      photo ||
-      report.photoUrl;
+    const existingAttachments =
+      report.attachments ?? [];
+
+    const hasAttachment =
+      files.length > 0 ||
+      existingAttachments.length > 0 ||
+      !!report.photoUrl;
 
     if (
       !description &&
-      !hasPhoto
+      !hasAttachment
     ) {
       throw new BadRequestException(
-        'At least a description or photo is required',
+        'At least a description or attachment is required',
       );
     }
 
     if (
-      dto.hazardType ===
-        HazardType.OTHER &&
+      dto.hazardType === HazardType.OTHER &&
       !dto.customHazardType
     ) {
       throw new BadRequestException(
@@ -357,32 +342,28 @@ export class ReportsService {
     }
 
     if (
-      dto.hazardType !==
-        undefined
+      dto.hazardType !== undefined
     ) {
       report.hazardType =
         dto.hazardType;
     }
 
     if (
-      dto.customHazardType !==
-      undefined
+      dto.customHazardType !== undefined
     ) {
       report.customHazardType =
         dto.customHazardType;
     }
 
     if (
-      dto.description !==
-      undefined
+      dto.description !== undefined
     ) {
       report.description =
         dto.description;
     }
 
     if (
-      dto.latitude !==
-      undefined
+      dto.latitude !== undefined
     ) {
       report.latitude =
         dto.latitude
@@ -391,8 +372,7 @@ export class ReportsService {
     }
 
     if (
-      dto.longitude !==
-      undefined
+      dto.longitude !== undefined
     ) {
       report.longitude =
         dto.longitude
@@ -401,26 +381,34 @@ export class ReportsService {
     }
 
     if (
-      dto.manualLocation !==
-      undefined
+      dto.manualLocation !== undefined
     ) {
       report.manualLocation =
         dto.manualLocation;
     }
 
-    if (dto.district !== undefined) {
-      report.district =
-        dto.district ? dto.district.trim() : undefined;
-    }
+    if (files.length > 0) {
+      const newAttachmentUrls =
+        files.map((file) =>
+          this.getAttachmentUrl(file),
+        );
 
-    if (dto.city !== undefined) {
-      report.city =
-        dto.city ? dto.city.trim() : undefined;
-    }
+      // Keep existing attachments and append new ones.
+      report.attachments = [
+        ...existingAttachments,
+        ...newAttachmentUrls,
+      ];
 
-    if (photo) {
-      report.photoUrl =
-        `/uploads/reports/${photo.filename}`;
+      // Keep the legacy photoUrl pointing to an image.
+      const firstNewImage =
+        files.find((file) =>
+          file.mimetype.startsWith('image/'),
+        );
+
+      if (firstNewImage) {
+        report.photoUrl =
+          this.getAttachmentUrl(firstNewImage);
+      }
     }
 
     /*
@@ -448,7 +436,7 @@ export class ReportsService {
         longitude:
           report.longitude?.toString(),
       });
-      
+
     await report.save();
 
     return {
@@ -463,7 +451,6 @@ export class ReportsService {
 
   async delete(
     citizenId: string,
-
     reportId: string,
   ) {
     const report =
@@ -485,11 +472,8 @@ export class ReportsService {
 
     const deletableStatuses = [
       ReportStatus.DRAFT,
-
       ReportStatus.PENDING_SYNC,
-
       ReportStatus.PENDING_VERIFICATION,
-
       ReportStatus.NEEDS_MORE_INFO,
     ];
 
@@ -523,10 +507,8 @@ export class ReportsService {
     dto: Partial<CreateReportDto>,
   ): Promise<boolean> {
     if (
-      dto.latitude ===
-        undefined ||
-      dto.longitude ===
-        undefined
+      dto.latitude === undefined ||
+      dto.longitude === undefined
     ) {
       return false;
     }
@@ -555,7 +537,6 @@ export class ReportsService {
         status: {
           $in: [
             ReportStatus.PENDING_VERIFICATION,
-
             ReportStatus.VERIFIED,
           ],
         },
@@ -578,283 +559,5 @@ export class ReportsService {
       });
 
     return !!existing;
-  }
-
-  private escapeRegex(input: string): string {
-    return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  async getDistricts(): Promise<{ success: boolean; data: string[] }> {
-    const reportDistricts = await this.reportModel
-      .distinct('district', {
-        deletedAt: { $exists: false },
-        district: { $exists: true, $ne: '' },
-      })
-      .exec();
-
-    const standardDistricts = [
-      'Ampara',
-      'Anuradhapura',
-      'Badulla',
-      'Batticaloa',
-      'Colombo',
-      'Galle',
-      'Gampaha',
-      'Hambantota',
-      'Jaffna',
-      'Kalutara',
-      'Kandy',
-      'Kegalle',
-      'Kilinochchi',
-      'Kurunegala',
-      'Mannar',
-      'Matale',
-      'Matara',
-      'Monaragala',
-      'Mullaitivu',
-      'Nuwara Eliya',
-      'Polonnaruwa',
-      'Puttalam',
-      'Ratnapura',
-      'Trincomalee',
-      'Vavuniya',
-    ];
-
-    const districtSet = new Set<string>();
-
-    for (const d of standardDistricts) {
-      if (d && d.trim()) districtSet.add(d.trim());
-    }
-
-    if (Array.isArray(reportDistricts)) {
-      for (const d of reportDistricts) {
-        if (typeof d === 'string' && d.trim()) {
-          districtSet.add(d.trim().charAt(0).toUpperCase() + d.trim().slice(1));
-        }
-      }
-    }
-
-    const userDistricts = await this.userModel
-      .distinct('assignedDistricts', { isActive: true })
-      .exec();
-    if (Array.isArray(userDistricts)) {
-      for (const d of userDistricts) {
-        if (typeof d === 'string' && d.trim()) {
-          districtSet.add(d.trim().charAt(0).toUpperCase() + d.trim().slice(1));
-        }
-      }
-    }
-
-    const userDirectDistricts = await this.userModel
-      .distinct('district', { isActive: true })
-      .exec();
-    if (Array.isArray(userDirectDistricts)) {
-      for (const d of userDirectDistricts) {
-        if (typeof d === 'string' && d.trim()) {
-          districtSet.add(d.trim().charAt(0).toUpperCase() + d.trim().slice(1));
-        }
-      }
-    }
-
-    const sorted = Array.from(districtSet).sort((a, b) => a.localeCompare(b));
-
-    return {
-      success: true,
-      data: sorted,
-    };
-  }
-
-  async findAll(
-    userId: string,
-    filters: {
-      district?: string;
-      status?: string;
-      hazardType?: string;
-      search?: string;
-    },
-  ): Promise<{ success: boolean; count: number; data: any[] }> {
-    const actor = await this.userModel
-      .findById(userId)
-      .select('role district assignedDistricts isActive fullName')
-      .exec();
-
-    if (!actor || !actor.isActive) {
-      throw new ForbiddenException('User is not authorized or is inactive.');
-    }
-
-    const andConditions: any[] = [{ deletedAt: { $exists: false } }];
-
-    if (
-      filters.district &&
-      filters.district.trim() &&
-      filters.district.trim().toUpperCase() !== 'ALL'
-    ) {
-      const cleanDistrict = filters.district.trim();
-      const dRegex = new RegExp(
-        `^${this.escapeRegex(cleanDistrict)}$`,
-        'i',
-      );
-      const dPartial = new RegExp(
-        this.escapeRegex(cleanDistrict),
-        'i',
-      );
-      andConditions.push({
-        $or: [
-          { district: dRegex },
-          { manualLocation: dPartial },
-          { city: dRegex },
-        ],
-      });
-    }
-
-    if (filters.status && filters.status.toUpperCase() !== 'ALL') {
-      andConditions.push({ status: filters.status });
-    }
-
-    if (filters.hazardType && filters.hazardType.toUpperCase() !== 'ALL') {
-      andConditions.push({ hazardType: filters.hazardType });
-    }
-
-    if (filters.search && filters.search.trim()) {
-      const searchRegex = new RegExp(
-        this.escapeRegex(filters.search.trim()),
-        'i',
-      );
-      andConditions.push({
-        $or: [
-          { reportNumber: searchRegex },
-          { description: searchRegex },
-          { manualLocation: searchRegex },
-          { city: searchRegex },
-          { district: searchRegex },
-          { customHazardType: searchRegex },
-        ],
-      });
-    }
-
-    const query = andConditions.length > 1 ? { $and: andConditions } : andConditions[0];
-
-    const reports = await this.reportModel
-      .find(query)
-      .sort({ submittedAt: -1, createdAt: -1 })
-      .lean();
-
-    const citizenIds = [
-      ...new Set(reports.map((r) => r.citizenId).filter(Boolean)),
-    ];
-    const citizens = await this.userModel
-      .find({ _id: { $in: citizenIds } })
-      .select('fullName email phone district')
-      .lean();
-
-    const citizenMap = new Map(
-      citizens.map((c) => [String(c._id), c]),
-    );
-
-    const data = reports.map((report) => {
-      const citizen = citizenMap.get(String(report.citizenId));
-      return {
-        ...report,
-        citizenName: citizen?.fullName || 'Citizen User',
-        citizenPhone: citizen?.phone || '—',
-        citizenEmail: citizen?.email || '—',
-      };
-    });
-
-    return {
-      success: true,
-      count: data.length,
-      data,
-    };
-  }
-
-  async findById(reportId: string): Promise<{ success: boolean; data: any }> {
-    const report = await this.reportModel
-      .findOne({
-        _id: reportId,
-        deletedAt: { $exists: false },
-      })
-      .lean();
-
-    if (!report) {
-      throw new NotFoundException('Report not found');
-    }
-
-    const citizen = await this.userModel
-      .findById(report.citizenId)
-      .select('fullName email phone district')
-      .lean();
-
-    return {
-      success: true,
-      data: {
-        ...report,
-        citizenName: citizen?.fullName || 'Citizen User',
-        citizenPhone: citizen?.phone || '—',
-        citizenEmail: citizen?.email || '—',
-      },
-    };
-  }
-
-  async updateStatus(
-    reportId: string,
-    officerId: string,
-    dto: UpdateReportStatusDto,
-  ): Promise<{ success: boolean; message: string; data: any }> {
-    const officer = await this.userModel
-      .findById(officerId)
-      .select('role district assignedDistricts fullName')
-      .exec();
-
-    if (!officer) {
-      throw new ForbiddenException('Officer account not found');
-    }
-
-    const report = await this.reportModel.findOne({
-      _id: reportId,
-      deletedAt: { $exists: false },
-    });
-
-    if (!report) {
-      throw new NotFoundException('Report not found');
-    }
-
-    const isOfficer =
-      officer.role === UserRole.DUTY_OFFICER ||
-      officer.role === UserRole.DISTRICT_OFFICER;
-
-    if (isOfficer && report.district) {
-      const authorizedDistricts = [
-        ...(officer.assignedDistricts ?? []),
-        ...(officer.district ? [officer.district] : []),
-      ]
-        .map((d) => d?.trim().toLowerCase())
-        .filter(Boolean);
-
-      if (
-        authorizedDistricts.length > 0 &&
-        !authorizedDistricts.includes(report.district.trim().toLowerCase())
-      ) {
-        throw new ForbiddenException(
-          'You can only verify or update reports in your registered district.',
-        );
-      }
-    }
-
-    report.status = dto.status;
-    if (dto.officerNotes !== undefined) {
-      report.officerNotes = dto.officerNotes;
-    }
-    if (dto.rejectionReason !== undefined) {
-      report.rejectionReason = dto.rejectionReason;
-    }
-
-    await report.save();
-
-    return {
-      success: true,
-      message: `Report status updated to ${dto.status}`,
-      data: report,
-    };
   }
 }

@@ -1,0 +1,10 @@
+Add these inside the top-level <manifest> element in android/app/src/main/AndroidManifest.xml:
+
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.CAMERA" />
+
+For Android 13+ notification permission, configure/request POST_NOTIFICATIONS if you enable Firebase Messaging notifications. Image picker may use the system photo picker depending on Android version.
+
+If your Android app targets recent SDKs and uses cleartext HTTP only for local development, Android may block it depending on your network security configuration. Prefer HTTPS; use HTTP only for local development and configure it explicitly if necessary.
