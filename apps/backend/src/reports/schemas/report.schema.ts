@@ -82,6 +82,17 @@ export class DisasterReport {
   @Prop()
   longitude?: number;
 
+  @Prop({
+    index: true,
+    trim: true,
+  })
+  district?: string;
+
+  @Prop({
+    trim: true,
+  })
+  city?: string;
+
   @Prop()
   manualLocation?: string;
 
@@ -119,6 +130,11 @@ export const ReportSchema =
 ReportSchema.index({
   latitude: 1,
   longitude: 1,
+});
+
+ReportSchema.index({
+  district: 1,
+  status: 1,
 });
 
 ReportSchema.index({
