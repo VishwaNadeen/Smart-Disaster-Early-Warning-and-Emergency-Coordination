@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 import '../../core/storage/token_storage.dart';
@@ -10,6 +9,10 @@ import '../auth/login_page.dart';
 import '../ground_reports/submit_report_page.dart';
 import '../shelters/shelters_page.dart';
 import '../../services/ground_report_service.dart';
+import '../help_requests/help_request_page.dart';
+
+import '../../core/config/api_config.dart';
+import '../../services/help_request_service.dart';
 
 class CitizenHomePage extends StatefulWidget {
   const CitizenHomePage({super.key});
@@ -22,7 +25,7 @@ class CitizenHomePage extends StatefulWidget {
 class _CitizenHomePageState extends State<CitizenHomePage> {
   int _selectedIndex = 0;
 
-    final List<Widget> _pages = const [
+  final List<Widget> _pages = const [
     CitizenDashboardPage(),
     CitizenReportsPage(),
     SheltersPage(),
@@ -294,6 +297,34 @@ class _CitizenDashboardPageState
           ],
         ),
       ),
+      floatingActionButton: FloatingActionButton.extended(
+  heroTag: 'citizenHelpMeButton',
+  onPressed: () {
+    final tokenStorage = TokenStorage();
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HelpRequestPage(
+          service: HelpRequestService(
+            apiBaseUrl: ApiConfig.baseUrl,
+            readAccessToken: () => tokenStorage.readToken(),
+          ),
+          loadProfile: () async {
+            // Replace this with your existing profile API call.
+            return <String, dynamic>{};
+          },
+        ),
+      ),
+    );
+  },
+  icon: const Icon(Icons.sos_rounded),
+  label: const Text('Help Me'),
+  backgroundColor: Colors.red,
+  foregroundColor: Colors.white,
+),
+      floatingActionButtonLocation:
+          FloatingActionButtonLocation.endFloat,
     );
   }
 }
