@@ -1,3 +1,4 @@
+
 name: mobile
 description: "A new Flutter project."
 publish_to: 'none'
@@ -11,19 +12,50 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # UI
   cupertino_icons: ^1.0.8
+
+  # HTTP requests and API communication
   http: ^1.6.0
 
-  # Firebase initialization
-  firebase_core: ^4.15.0
+  # Image selection
+  image_picker: ^1.2.4
 
-  # Firebase Cloud Messaging (push notifications)
+  # GPS and location services
+  geolocator: ^14.0.1
+
+  # Local data storage
+  shared_preferences: ^2.5.3
+
+  # Firebase push notifications
+  firebase_core: ^4.15.0
   firebase_messaging: ^16.7.0
+
+  # File and video attachments
+  file_picker: ^13.1.0
+  video_player: ^2.14.1
+
+  # Google Maps and external navigation
+  google_maps_flutter: ^2.18.1
+  url_launcher: ^6.3.3
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
   flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true
+
+  # Add assets here if required.
+  # assets:
+  #   - images/example.png
+
+  # Add custom fonts here if required.
+  # fonts:
+  #   - family: CustomFont
+  #     fonts:
+  #       - asset: fonts/CustomFont-Regular.ttf

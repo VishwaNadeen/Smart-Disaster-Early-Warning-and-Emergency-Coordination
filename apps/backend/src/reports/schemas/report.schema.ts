@@ -11,6 +11,10 @@ import {
 export type ReportDocument =
   HydratedDocument<DisasterReport>;
 
+// ==================================================
+// HAZARD TYPES
+// ==================================================
+
 export enum HazardType {
   RISING_WATER = 'RISING_WATER',
   FLOOD = 'FLOOD',
@@ -23,22 +27,29 @@ export enum HazardType {
   OTHER = 'OTHER',
 }
 
+// ==================================================
+// REPORT STATUSES
+// ==================================================
+
 export enum ReportStatus {
   DRAFT = 'DRAFT',
   PENDING_SYNC = 'PENDING_SYNC',
-  PENDING_VERIFICATION =
-    'PENDING_VERIFICATION',
-  NEEDS_MORE_INFO =
-    'NEEDS_MORE_INFO',
+  PENDING_VERIFICATION = 'PENDING_VERIFICATION',
+  NEEDS_MORE_INFO = 'NEEDS_MORE_INFO',
   VERIFIED = 'VERIFIED',
   REJECTED = 'REJECTED',
   DELETED = 'DELETED',
 }
 
+// ==================================================
+// DISASTER REPORT SCHEMA
+// ==================================================
+
 @Schema({
   timestamps: true,
 })
 export class DisasterReport {
+  // Unique report reference.
   @Prop({
     required: true,
     unique: true,
@@ -46,73 +57,156 @@ export class DisasterReport {
   })
   reportNumber: string;
 
+  // ID of the citizen who submitted the report.
   @Prop({
     required: true,
     index: true,
   })
   citizenId: string;
 
+  // Hazard category.
   @Prop({
     required: true,
     enum: HazardType,
   })
   hazardType: HazardType;
 
-  @Prop()
+  // Required when hazardType is OTHER.
+  @Prop({
+    type: String,
+    trim: true,
+  })
   customHazardType?: string;
 
-  @Prop()
+  // Citizen's description of the incident.
+  @Prop({
+    type: String,
+    trim: true,
+  })
   description?: string;
 
-  @Prop()
+  // Preserved for compatibility with the existing frontend.
+  @Prop({
+    type: String,
+  })
   photoUrl?: string;
 
-  @Prop()
+  // Paths for all uploaded attachments.
+  @Prop({
+    type: [String],
+    default: [],
+  })
+  attachments: string[];
+
+  // GPS coordinates.
+  @Prop({
+    type: Number,
+    min: -90,
+    max: 90,
+  })
   latitude?: number;
 
-  @Prop()
+  @Prop({
+    type: Number,
+    min: -180,
+    max: 180,
+  })
   longitude?: number;
 
-  @Prop()
+  // Manually entered location.
+  @Prop({
+    type: String,
+    trim: true,
+  })
   manualLocation?: string;
 
+  // District used for officer assignment and filtering.
   @Prop({
+    type: String,
+    trim: true,
+    index: true,
+  })
+  district?: string;
+
+  // City or local area.
+  @Prop({
+    type: String,
+    trim: true,
+  })
+  city?: string;
+
+  // Verification workflow status.
+  @Prop({
+    type: String,
     enum: ReportStatus,
-    default:
-      ReportStatus.PENDING_VERIFICATION,
+    default: ReportStatus.PENDING_VERIFICATION,
     index: true,
   })
   status: ReportStatus;
 
+  // Indicates a possible duplicate, not a confirmed duplicate.
   @Prop({
+    type: Boolean,
     default: false,
   })
   possibleDuplicate: boolean;
 
-  @Prop()
+  // Explanation when an officer rejects a report.
+  @Prop({
+    type: String,
+    trim: true,
+  })
   rejectionReason?: string;
 
-  @Prop()
+  // Officer feedback or request for more information.
+  @Prop({
+    type: String,
+    trim: true,
+  })
   officerNotes?: string;
 
-  @Prop()
+  // Soft deletion; the document remains in the database.
+  @Prop({
+    type: Date,
+  })
   deletedAt?: Date;
 
-  @Prop()
+  // Report submission time.
+  @Prop({
+    type: Date,
+    default: Date.now,
+    index: true,
+  })
   submittedAt?: Date;
 }
 
-export const ReportSchema =
-  SchemaFactory.createForClass(
-    DisasterReport,
-  );
+// ==================================================
+// MONGOOSE SCHEMA
+// ==================================================
 
+export const ReportSchema =
+  SchemaFactory.createForClass(DisasterReport);
+
+// Geographic lookup index.
 ReportSchema.index({
   latitude: 1,
   longitude: 1,
 });
 
+// Filter reports by hazard and verification status.
 ReportSchema.index({
   hazardType: 1,
+  status: 1,
+});
+
+// Efficiently retrieve a citizen's reports.
+ReportSchema.index({
+  citizenId: 1,
+  submittedAt: -1,
+});
+
+// Efficient district-based officer queue.
+ReportSchema.index({
+  district: 1,
   status: 1,
 });

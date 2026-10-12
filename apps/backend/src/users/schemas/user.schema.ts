@@ -7,6 +7,7 @@ import {
 
 import {
   HydratedDocument,
+  Types,
 } from 'mongoose';
 
 export type UserDocument = HydratedDocument<User>;
@@ -19,11 +20,17 @@ export enum UserRole {
   ANALYST = 'ANALYST',
   ADMIN = 'ADMIN',
   SYSTEM_ADMIN = 'SYSTEM_ADMIN',
+  SHELTER_STAFF = 'SHELTER_STAFF',
 }
 
-@Schema({ timestamps: true })
+@Schema({
+  timestamps: true,
+})
 export class User {
-  @Prop({ required: true, trim: true })
+  @Prop({
+    required: true,
+    trim: true,
+  })
   fullName: string;
 
   @Prop({
@@ -35,39 +42,37 @@ export class User {
   })
   email: string;
 
-  @Prop({ required: true })
+  @Prop({
+    required: true,
+  })
   passwordHash: string;
 
-  @Prop({ trim: true })
+  @Prop()
   phone?: string;
 
   @Prop({
     enum: UserRole,
     default: UserRole.CITIZEN,
-    index: true,
   })
   role: UserRole;
 
-  // Citizen's living district.
-  // Kept separate from an officer's assignedDistricts.
   @Prop({ trim: true, index: true })
   district?: string;
 
-  // Citizen's living city/town.
   @Prop({ trim: true, index: true })
   livingCity?: string;
 
   @Prop({ trim: true })
   address?: string;
 
-  // Firebase Cloud Messaging tokens for Flutter devices.
+  // Firebase Cloud Messaging tokens for Flutter devices
   @Prop({
     type: [String],
     default: [],
   })
   fcmTokens: string[];
 
-  // WhatsApp messages are only sent with recorded consent.
+  // WhatsApp messages are only sent with recorded consent
   @Prop({
     type: Boolean,
     default: false,
@@ -93,31 +98,52 @@ export class User {
   })
   mustCompleteProfile: boolean;
 
-  @Prop({ trim: true })
+  @Prop({
+    trim: true,
+  })
   officerIdNumber?: string;
 
-  @Prop({ trim: true })
+  @Prop({
+    trim: true,
+  })
   dmcNumber?: string;
 
-  @Prop({ trim: true })
+  @Prop({
+    trim: true,
+  })
   workingLocation?: string;
 
-  @Prop({ trim: true })
+  @Prop({
+    trim: true,
+  })
   officePhoneNumber?: string;
 
-  @Prop({ trim: true })
+  @Prop({
+    trim: true,
+  })
   residentialAddress?: string;
 
-  @Prop({ trim: true })
+  @Prop({
+    trim: true,
+  })
   officeAddress?: string;
 
-  // Admin-controlled officer working-district assignments.
+  // Admin-controlled district assignments.
   @Prop({
     type: [String],
     default: [],
   })
   assignedDistricts: string[];
 
+  // Admin-controlled shelter assignments for shelter staff.
+  @Prop({
+    type: [Types.ObjectId],
+    ref: 'Shelter',
+    default: [],
+  })
+  assignedShelterIds: Types.ObjectId[];
+
+  // Store only the SHA-256 token hash.
   @Prop()
   emailVerificationTokenHash?: string;
 
@@ -127,10 +153,8 @@ export class User {
   @Prop()
   deletedAt?: Date;
 
-  @Prop()
   createdAt: Date;
 
-  @Prop()
   updatedAt: Date;
 }
 

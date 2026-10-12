@@ -101,6 +101,8 @@ apps/backend/dist/
 apps/backend/.nestjs/
 
 data/
+!apps/web/src/data/
+!apps/web/src/data/**
 mongodb-data/
 .mongo/
 *.mongodb.log

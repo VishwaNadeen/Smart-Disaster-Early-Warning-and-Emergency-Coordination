@@ -1,3 +1,4 @@
+
 import {
   Injectable,
   UnauthorizedException,
@@ -30,21 +31,29 @@ export class JwtStrategy extends PassportStrategy(
   Strategy,
 ) {
   constructor(
-  @InjectModel(User.name)
-  private readonly userModel: Model<UserDocument>,
-) {
-  const jwtSecret = process.env.JWT_SECRET;
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
+  ) {
+    // Read the JWT secret from environment configuration.
+    const jwtSecret = process.env.JWT_SECRET;
 
-  if (!jwtSecret) {
-    throw new Error('JWT_SECRET is not defined');
+    // Prevent the application from starting without a JWT secret.
+    if (!jwtSecret) {
+      throw new Error('JWT_SECRET is not defined');
+    }
+
+    super({
+      // Extract the token from the Authorization: Bearer header.
+      jwtFromRequest:
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+
+      // Reject expired JWT tokens.
+      ignoreExpiration: false,
+
+      // Use the configured secret to validate JWT signatures.
+      secretOrKey: jwtSecret,
+    });
   }
-
-  super({
-    jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-    ignoreExpiration: false,
-    secretOrKey: jwtSecret,
-  });
-}
 
   async validate(
     payload: {
@@ -52,11 +61,13 @@ export class JwtStrategy extends PassportStrategy(
       role: string;
     },
   ) {
+    // Find the user associated with the JWT subject.
     const user =
       await this.userModel.findById(
         payload.sub,
       );
 
+    // Reject requests from missing or deactivated accounts.
     if (
       !user ||
       !user.isActive
@@ -66,6 +77,7 @@ export class JwtStrategy extends PassportStrategy(
       );
     }
 
+    // Passport attaches this returned object to req.user.
     return {
       id: user.id,
 
