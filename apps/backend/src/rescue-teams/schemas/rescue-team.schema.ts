@@ -48,10 +48,8 @@ export class RescueTeam {
   teamName: string;
 
   @Prop({
-    required: true,
-    enum: RescueTeamType,
-    default: RescueTeamType.ARMY,
-    index: true,
+  type: String,
+  enum: Object.values(RescueTeamType),
   })
   teamType: RescueTeamType;
 
@@ -84,9 +82,10 @@ export class RescueTeam {
   contactPhone?: string;
 
   @Prop({
-    enum: RescueTeamStatus,
-    default: RescueTeamStatus.AVAILABLE,
-    index: true,
+  type: String,
+  enum: Object.values(RescueTeamStatus),
+  default: RescueTeamStatus.AVAILABLE,
+  index: true,
   })
   status: RescueTeamStatus;
 

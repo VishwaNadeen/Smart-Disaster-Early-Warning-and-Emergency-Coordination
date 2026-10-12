@@ -66,8 +66,9 @@ export class DisasterReport {
 
   // Hazard category.
   @Prop({
-    required: true,
-    enum: HazardType,
+  type: String,
+  required: true,
+  enum: Object.values(HazardType),
   })
   hazardType: HazardType;
 
