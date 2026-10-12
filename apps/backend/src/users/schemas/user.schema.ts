@@ -1,3 +1,4 @@
+
 import {
   Prop,
   Schema,
@@ -8,8 +9,7 @@ import {
   HydratedDocument,
 } from 'mongoose';
 
-export type UserDocument =
-  HydratedDocument<User>;
+export type UserDocument = HydratedDocument<User>;
 
 export enum UserRole {
   CITIZEN = 'CITIZEN',
@@ -21,14 +21,9 @@ export enum UserRole {
   SYSTEM_ADMIN = 'SYSTEM_ADMIN',
 }
 
-@Schema({
-  timestamps: true,
-})
+@Schema({ timestamps: true })
 export class User {
-  @Prop({
-    required: true,
-    trim: true,
-  })
+  @Prop({ required: true, trim: true })
   fullName: string;
 
   @Prop({
@@ -40,25 +35,47 @@ export class User {
   })
   email: string;
 
-  @Prop({
-    required: true,
-  })
+  @Prop({ required: true })
   passwordHash: string;
 
-  @Prop()
+  @Prop({ trim: true })
   phone?: string;
 
   @Prop({
     enum: UserRole,
     default: UserRole.CITIZEN,
+    index: true,
   })
   role: UserRole;
 
-  @Prop()
+  // Citizen's living district.
+  // Kept separate from an officer's assignedDistricts.
+  @Prop({ trim: true, index: true })
   district?: string;
 
-  @Prop()
+  // Citizen's living city/town.
+  @Prop({ trim: true, index: true })
+  livingCity?: string;
+
+  @Prop({ trim: true })
   address?: string;
+
+  // Firebase Cloud Messaging tokens for Flutter devices.
+  @Prop({
+    type: [String],
+    default: [],
+  })
+  fcmTokens: string[];
+
+  // WhatsApp messages are only sent with recorded consent.
+  @Prop({
+    type: Boolean,
+    default: false,
+  })
+  whatsappOptIn: boolean;
+
+  @Prop()
+  whatsappOptInAt?: Date;
 
   @Prop({
     default: true,
@@ -76,44 +93,31 @@ export class User {
   })
   mustCompleteProfile: boolean;
 
-  @Prop({
-    trim: true,
-  })
+  @Prop({ trim: true })
   officerIdNumber?: string;
 
-  @Prop({
-    trim: true,
-  })
+  @Prop({ trim: true })
   dmcNumber?: string;
 
-  @Prop({
-    trim: true,
-  })
+  @Prop({ trim: true })
   workingLocation?: string;
 
-  @Prop({
-    trim: true,
-  })
+  @Prop({ trim: true })
   officePhoneNumber?: string;
 
-  @Prop({
-    trim: true,
-  })
+  @Prop({ trim: true })
   residentialAddress?: string;
 
-  @Prop({
-    trim: true,
-  })
+  @Prop({ trim: true })
   officeAddress?: string;
 
-  // Admin-controlled assignment. Officers must never update this directly.
+  // Admin-controlled officer working-district assignments.
   @Prop({
     type: [String],
     default: [],
   })
   assignedDistricts: string[];
 
-  // Store only SHA-256 token hash, never raw email verification token.
   @Prop()
   emailVerificationTokenHash?: string;
 
