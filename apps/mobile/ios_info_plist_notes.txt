@@ -1,0 +1,5 @@
+For iOS location use, add an NSLocationWhenInUseUsageDescription entry to ios/Runner/Info.plist, for example:
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>Your location is attached to a hazard report so responders can identify the affected area.</string>
+
+For camera/photo library, add the appropriate NSCameraUsageDescription and NSPhotoLibraryUsageDescription descriptions if required by the selected plugin versions. Configure APNs and Firebase capabilities separately if using push notifications.

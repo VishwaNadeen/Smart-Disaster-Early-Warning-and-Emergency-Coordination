@@ -1,3 +1,4 @@
+
 import {
   BadRequestException,
   ConflictException,
@@ -51,18 +52,22 @@ export class ReportsService {
     return `RPT-${year}-${random}`;
   }
 
+  private getAttachmentUrl(
+    file: Express.Multer.File,
+  ): string {
+    return `/uploads/reports/${file.filename}`;
+  }
+
   async create(
     citizenId: string,
-
     dto: CreateReportDto,
-
-    photo?: Express.Multer.File,
+    files: Express.Multer.File[] = [],
   ) {
     /*
      * The project use case requires:
      * hazard type
      * location
-     * photo and/or description
+     * photo/attachment and/or description
      */
 
     if (
@@ -88,10 +93,10 @@ export class ReportsService {
 
     if (
       !dto.description &&
-      !photo
+      files.length === 0
     ) {
       throw new BadRequestException(
-        'At least a description or photo is required',
+        'At least a description or attachment is required',
       );
     }
 
@@ -107,6 +112,17 @@ export class ReportsService {
     const possibleDuplicate =
       await this.checkDuplicate(
         dto,
+      );
+
+    const attachmentUrls =
+      files.map((file) =>
+        this.getAttachmentUrl(file),
+      );
+
+    // Preserve photoUrl for existing frontend consumers.
+    const firstImage =
+      files.find((file) =>
+        file.mimetype.startsWith('image/'),
       );
 
     const report =
@@ -125,9 +141,12 @@ export class ReportsService {
         description:
           dto.description,
 
-        photoUrl: photo
-          ? `/uploads/reports/${photo.filename}`
+        photoUrl: firstImage
+          ? this.getAttachmentUrl(firstImage)
           : undefined,
+
+        attachments:
+          attachmentUrls,
 
         latitude:
           dto.latitude
@@ -207,7 +226,6 @@ export class ReportsService {
 
   async findMyReport(
     citizenId: string,
-
     reportId: string,
   ) {
     const report =
@@ -236,12 +254,9 @@ export class ReportsService {
 
   async update(
     citizenId: string,
-
     reportId: string,
-
     dto: UpdateReportDto,
-
-    photo?: Express.Multer.File,
+    files: Express.Multer.File[] = [],
   ) {
     const report =
       await this.reportModel.findOne({
@@ -262,11 +277,8 @@ export class ReportsService {
 
     const editableStatuses = [
       ReportStatus.DRAFT,
-
       ReportStatus.PENDING_SYNC,
-
       ReportStatus.PENDING_VERIFICATION,
-
       ReportStatus.NEEDS_MORE_INFO,
     ];
 
@@ -285,22 +297,25 @@ export class ReportsService {
         ? dto.description
         : report.description;
 
-    const hasPhoto =
-      photo ||
-      report.photoUrl;
+    const existingAttachments =
+      report.attachments ?? [];
+
+    const hasAttachment =
+      files.length > 0 ||
+      existingAttachments.length > 0 ||
+      !!report.photoUrl;
 
     if (
       !description &&
-      !hasPhoto
+      !hasAttachment
     ) {
       throw new BadRequestException(
-        'At least a description or photo is required',
+        'At least a description or attachment is required',
       );
     }
 
     if (
-      dto.hazardType ===
-        HazardType.OTHER &&
+      dto.hazardType === HazardType.OTHER &&
       !dto.customHazardType
     ) {
       throw new BadRequestException(
@@ -327,32 +342,28 @@ export class ReportsService {
     }
 
     if (
-      dto.hazardType !==
-        undefined
+      dto.hazardType !== undefined
     ) {
       report.hazardType =
         dto.hazardType;
     }
 
     if (
-      dto.customHazardType !==
-      undefined
+      dto.customHazardType !== undefined
     ) {
       report.customHazardType =
         dto.customHazardType;
     }
 
     if (
-      dto.description !==
-      undefined
+      dto.description !== undefined
     ) {
       report.description =
         dto.description;
     }
 
     if (
-      dto.latitude !==
-      undefined
+      dto.latitude !== undefined
     ) {
       report.latitude =
         dto.latitude
@@ -361,8 +372,7 @@ export class ReportsService {
     }
 
     if (
-      dto.longitude !==
-      undefined
+      dto.longitude !== undefined
     ) {
       report.longitude =
         dto.longitude
@@ -371,16 +381,34 @@ export class ReportsService {
     }
 
     if (
-      dto.manualLocation !==
-      undefined
+      dto.manualLocation !== undefined
     ) {
       report.manualLocation =
         dto.manualLocation;
     }
 
-    if (photo) {
-      report.photoUrl =
-        `/uploads/reports/${photo.filename}`;
+    if (files.length > 0) {
+      const newAttachmentUrls =
+        files.map((file) =>
+          this.getAttachmentUrl(file),
+        );
+
+      // Keep existing attachments and append new ones.
+      report.attachments = [
+        ...existingAttachments,
+        ...newAttachmentUrls,
+      ];
+
+      // Keep the legacy photoUrl pointing to an image.
+      const firstNewImage =
+        files.find((file) =>
+          file.mimetype.startsWith('image/'),
+        );
+
+      if (firstNewImage) {
+        report.photoUrl =
+          this.getAttachmentUrl(firstNewImage);
+      }
     }
 
     /*
@@ -408,7 +436,7 @@ export class ReportsService {
         longitude:
           report.longitude?.toString(),
       });
-      
+
     await report.save();
 
     return {
@@ -423,7 +451,6 @@ export class ReportsService {
 
   async delete(
     citizenId: string,
-
     reportId: string,
   ) {
     const report =
@@ -445,11 +472,8 @@ export class ReportsService {
 
     const deletableStatuses = [
       ReportStatus.DRAFT,
-
       ReportStatus.PENDING_SYNC,
-
       ReportStatus.PENDING_VERIFICATION,
-
       ReportStatus.NEEDS_MORE_INFO,
     ];
 
@@ -483,10 +507,8 @@ export class ReportsService {
     dto: Partial<CreateReportDto>,
   ): Promise<boolean> {
     if (
-      dto.latitude ===
-        undefined ||
-      dto.longitude ===
-        undefined
+      dto.latitude === undefined ||
+      dto.longitude === undefined
     ) {
       return false;
     }
@@ -515,7 +537,6 @@ export class ReportsService {
         status: {
           $in: [
             ReportStatus.PENDING_VERIFICATION,
-
             ReportStatus.VERIFIED,
           ],
         },
