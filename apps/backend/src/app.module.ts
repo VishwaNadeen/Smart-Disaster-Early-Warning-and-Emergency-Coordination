@@ -4,6 +4,7 @@ import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ReportsModule } from './reports/reports.module';
+import { HelpRequestsModule } from './help-requests/help-requests.module';
 import { AdminModule } from './admin/admin.module';
 import { OfficerModule } from './officer/officer.module';
 import { SheltersModule } from './shelters/shelters.module';
@@ -20,6 +21,7 @@ import { HazardAlertsModule } from './hazard-alerts/hazard-alerts.module';
     AuthModule,
     UsersModule,
     ReportsModule,
+    HelpRequestsModule,
     AdminModule,
     OfficerModule,
     SheltersModule,
