@@ -46,6 +46,15 @@ import {
   UpdateReportDto,
 } from './dto/update-report.dto';
 
+import {
+  Patch,
+  Query,
+} from '@nestjs/common';
+
+import {
+  UpdateReportStatusDto,
+} from './dto/update-report-status.dto';
+
 const uploadDirectory =
   './uploads/reports';
 
@@ -300,6 +309,58 @@ export class ReportsController {
     return this.reportsService.delete(
       req.user.id,
       id,
+    );
+  }
+
+  // Get available districts.
+  @Get('districts')
+  getDistricts() {
+    return this.reportsService.getDistricts();
+  }
+
+  // Get all reports for the authorized officer.
+  @Get()
+  findAll(
+    @Req() req: any,
+    @Query('district') district?: string,
+    @Query('status') status?: string,
+    @Query('hazardType') hazardType?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.reportsService.findAll(
+      req.user.id,
+      {
+        district,
+        status,
+        hazardType,
+        search,
+      },
+    );
+  }
+
+  // Get one report for officer review.
+  @Get(':id')
+  findById(
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
+    return this.reportsService.findById(
+      id,
+      req.user.id,
+    );
+  }
+
+  // Verify, reject, or request more information.
+  @Patch(':id/status')
+  updateStatus(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: UpdateReportStatusDto,
+  ) {
+    return this.reportsService.updateStatus(
+      id,
+      req.user.id,
+      dto,
     );
   }
 }
