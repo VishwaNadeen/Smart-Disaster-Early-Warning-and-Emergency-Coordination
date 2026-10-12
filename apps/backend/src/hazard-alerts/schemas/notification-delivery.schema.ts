@@ -31,16 +31,18 @@ export class NotificationDelivery {
   recipientId: string;
 
   @Prop({
-    required: true,
-    enum: NotificationChannel,
+  type: String,
+  required: true,
+  enum: Object.values(NotificationChannel),
   })
   channel: NotificationChannel;
 
-  @Prop({
-    required: true,
-    enum: DeliveryStatus,
-    default: DeliveryStatus.PENDING,
-    index: true,
+@Prop({
+  type: String,
+  required: true,
+  enum: Object.values(DeliveryStatus),
+  default: DeliveryStatus.PENDING,
+  index: true,
   })
   status: DeliveryStatus;
 

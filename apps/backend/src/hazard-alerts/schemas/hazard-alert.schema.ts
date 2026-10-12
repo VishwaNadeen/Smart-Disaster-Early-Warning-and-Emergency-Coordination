@@ -37,9 +37,10 @@ export class HazardAlert {
   hazardType: string;
 
   @Prop({
-    required: true,
-    enum: AlertSeverity,
-    index: true,
+  type: String,
+  required: true,
+  enum: Object.values(AlertSeverity),
+  index: true,
   })
   severity: AlertSeverity;
 
@@ -64,12 +65,13 @@ export class HazardAlert {
   publishedBy: string;
 
   @Prop({
-    required: true,
-    enum: HazardAlertStatus,
-    default: HazardAlertStatus.PUBLISHED,
-    index: true,
-  })
-  status: HazardAlertStatus;
+  type: String,
+  required: true,
+  enum: Object.values(HazardAlertStatus),
+  default: HazardAlertStatus.PUBLISHED,
+  index: true,
+})
+status: HazardAlertStatus;
 
   @Prop({ default: Date.now, index: true })
   publishedAt: Date;
