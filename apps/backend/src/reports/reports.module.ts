@@ -1,23 +1,14 @@
-import {
-  Module,
-} from '@nestjs/common';
+import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
 
-import {
-  MongooseModule,
-} from '@nestjs/mongoose';
-
-import {
-  ReportsController,
-} from './reports.controller';
-
-import {
-  ReportsService,
-} from './reports.service';
+import { ReportsController } from './reports.controller';
+import { ReportsService } from './reports.service';
 
 import {
   DisasterReport,
   ReportSchema,
 } from './schemas/report.schema';
+
 import {
   User,
   UserSchema,
@@ -27,16 +18,12 @@ import {
   imports: [
     MongooseModule.forFeature([
       {
-        name:
-          DisasterReport.name,
-        schema:
-          ReportSchema,
+        name: DisasterReport.name,
+        schema: ReportSchema,
       },
       {
-        name:
-          User.name,
-        schema:
-          UserSchema,
+        name: User.name,
+        schema: UserSchema,
       },
     ]),
   ],

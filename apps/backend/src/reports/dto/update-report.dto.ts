@@ -1,14 +1,11 @@
 import {
-  IsEnum,
-  IsLatitude,
-  IsLongitude,
   IsOptional,
   IsString,
+  IsNumber,
+  IsEnum,
+  MaxLength,
 } from 'class-validator';
-
-import {
-  HazardType,
-} from '../schemas/report.schema';
+import { HazardType } from '../schemas/report.schema'; // adjust path if needed
 
 export class UpdateReportDto {
   @IsOptional()
@@ -17,6 +14,7 @@ export class UpdateReportDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   customHazardType?: string;
 
   @IsOptional()
@@ -24,17 +22,18 @@ export class UpdateReportDto {
   description?: string;
 
   @IsOptional()
-  @IsLatitude()
-  latitude?: string;
+  @IsNumber()
+  latitude?: number;
 
   @IsOptional()
-  @IsLongitude()
-  longitude?: string;
+  @IsNumber()
+  longitude?: number;
 
   @IsOptional()
   @IsString()
   manualLocation?: string;
 
+  // ========== ADD THESE TWO ==========
   @IsOptional()
   @IsString()
   district?: string;
