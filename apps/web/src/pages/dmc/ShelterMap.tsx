@@ -8,7 +8,7 @@ import {
   useMap,
 } from 'react-leaflet'
 import L from 'leaflet'
-import { Building2, MapPin, Users } from 'lucide-react'
+import { Building2, MapPin } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 
 export interface MapShelter {
@@ -23,7 +23,6 @@ export interface MapShelter {
   latitude?: number
   longitude?: number
   maximumCapacity: number
-  currentOccupancy?: number
   operationalStatus: string
   isActive?: boolean
   facilities?: string[]
@@ -161,11 +160,7 @@ export default function ShelterMap({ shelters }: ShelterMapProps) {
     }
   }, [shelters, selectedShelter])
 
-  const occupancy = Number(selectedShelter?.currentOccupancy ?? 0)
   const capacity = Number(selectedShelter?.maximumCapacity ?? 0)
-  const available = Math.max(capacity - occupancy, 0)
-  const utilization =
-    capacity > 0 ? Math.round((occupancy / capacity) * 100) : 0
 
   const statusClass =
     selectedShelter?.operationalStatus === 'OPEN'
@@ -255,54 +250,19 @@ export default function ShelterMap({ shelters }: ShelterMapProps) {
                 </div>
 
                 <div className="rounded-lg border border-slate-200 bg-white p-4">
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <Users size={18} />
-                    <span className="text-sm font-medium">Occupancy</span>
-                  </div>
-
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                    Maximum Capacity
+                  </p>
                   <p className="mt-2 text-2xl font-bold text-slate-900">
-                    {occupancy.toLocaleString()}
-                    <span className="text-sm font-normal text-slate-500">
-                      {' '}/ {capacity.toLocaleString()}
+                    {capacity.toLocaleString()}
+                    <span className="ml-1 text-sm font-normal text-slate-500">
+                      people
                     </span>
                   </p>
-
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className={`h-full rounded-full ${
-                        occupancy > capacity
-                          ? 'bg-red-600'
-                          : utilization >= 90
-                            ? 'bg-amber-500'
-                            : 'bg-teal-600'
-                      }`}
-                      style={{
-                        width: `${Math.min(utilization, 100)}%`,
-                      }}
-                    />
-                  </div>
-
-                  <div className="mt-2 flex justify-between gap-2 text-xs text-slate-500">
-                    <span>Utilization</span>
-                    <span>{utilization}%</span>
-                  </div>
-
-                  <div className="mt-4 border-t border-slate-100 pt-3">
-                    <p className="text-sm text-slate-600">
-                      Available spaces:{' '}
-                      <strong className="text-slate-900">
-                        {available.toLocaleString()}
-                      </strong>
-                    </p>
-                  </div>
-                </div>
-
-                {occupancy > capacity && (
-                  <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                    Occupancy exceeds registered capacity. Review this
-                    shelter's status.
+                  <p className="mt-1 text-xs text-slate-500">
+                    Registered maximum capacity; current occupancy is not tracked.
                   </p>
-                )}
+                </div>
 
                 {selectedShelter.facilities &&
                   selectedShelter.facilities.length > 0 && (
@@ -351,8 +311,8 @@ export default function ShelterMap({ shelters }: ShelterMapProps) {
                 Select a shelter
               </h4>
               <p className="mt-2 max-w-xs text-sm leading-6 text-slate-500">
-                Click a marker to see its address, status, occupancy,
-                capacity, and facilities in this panel.
+                Click a marker to see its address, status, maximum capacity,
+                and facilities in this panel.
               </p>
               <p className="mt-4 text-xs text-slate-400">
                 {mappedShelters.length} shelter marker(s) available
@@ -418,8 +378,8 @@ export default function ShelterMap({ shelters }: ShelterMapProps) {
                         </p>
                         <p>Status: {shelter.operationalStatus}</p>
                         <p>
-                          Occupancy: {shelter.currentOccupancy ?? 0} /{' '}
-                          {shelter.maximumCapacity}
+                          Maximum capacity:{' '}
+                          {Number(shelter.maximumCapacity ?? 0).toLocaleString()}
                         </p>
                         <p className="pt-1 font-medium text-teal-700">
                           Full details are shown in the left panel.

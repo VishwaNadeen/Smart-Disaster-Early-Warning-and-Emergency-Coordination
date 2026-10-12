@@ -80,14 +80,6 @@ export class Shelter {
   })
   maximumCapacity: number;
 
-  // Current verified number of people inside the shelter.
-  @Prop({
-    required: true,
-    min: 0,
-    default: 0,
-  })
-  currentOccupancy: number;
-
   @Prop({
     enum: ShelterOperationalStatus,
     default: ShelterOperationalStatus.OPEN,
@@ -111,9 +103,6 @@ export class Shelter {
     trim: true,
   })
   notes?: string;
-
-  @Prop()
-  lastOccupancyVerifiedAt?: Date;
 }
 
 export const ShelterSchema =

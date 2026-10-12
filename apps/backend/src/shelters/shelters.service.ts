@@ -6,6 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
@@ -15,15 +16,8 @@ import {
   ShelterOperationalStatus,
 } from './schemas/shelter.schema';
 
-import { OccupancyHistory } from './schemas/occupancy-history.schema';
-
 import { CreateShelterDto } from './dto/create-shelter.dto';
 import { UpdateShelterDto } from './dto/update-shelter.dto';
-
-import {
-  OccupancyUpdateDto,
-  OccupancyUpdateType,
-} from './dto/occupancy-update.dto';
 
 import { UserRole } from '../users/schemas/user.schema';
 
@@ -42,24 +36,7 @@ export class SheltersService {
   constructor(
     @InjectModel(Shelter.name)
     private readonly shelterModel: Model<Shelter>,
-
-    // Store occupancy changes in the audit-history collection.
-    @InjectModel(OccupancyHistory.name)
-    private readonly occupancyHistoryModel: Model<OccupancyHistory>,
   ) {}
-
-  // Get the authenticated user's database ID.
-  private getUserId(user: AuthenticatedUser): string {
-    const id = user._id ?? user.id;
-
-    if (!id || !Types.ObjectId.isValid(id)) {
-      throw new ForbiddenException(
-        'A valid authenticated user ID is required.',
-      );
-    }
-
-    return id;
-  }
 
   // Check for globally privileged roles.
   private isAdmin(user: AuthenticatedUser): boolean {
@@ -101,8 +78,9 @@ export class SheltersService {
     return districts.includes(district.trim().toLowerCase());
   }
 
-  // Check whether the user can update a shelter's occupancy.
-  private canUpdateOccupancy(
+  // Check whether the user can view a particular shelter.
+  // Shelter Staff can only view shelters assigned to their account.
+  private canAccessShelter(
     user: AuthenticatedUser,
     shelter: ShelterDocument,
   ): boolean {
@@ -231,7 +209,7 @@ export class SheltersService {
         $in: districts.length ? districts : ['__NO_ACCESS__'],
       };
     } else if (user.role === UserRole.SHELTER_STAFF) {
-      // Shelter staff can view only their assigned shelters.
+      // Shelter Staff can view only their assigned shelters.
       const ids = (user.assignedShelterIds ?? [])
         .filter((value) =>
           Types.ObjectId.isValid(value.toString()),
@@ -258,11 +236,7 @@ export class SheltersService {
   ): Promise<ShelterDocument> {
     const shelter = await this.getShelter(id);
 
-    if (
-      !this.isAdmin(user) &&
-      !this.canAccessDistrict(user, shelter.district) &&
-      !this.canUpdateOccupancy(user, shelter)
-    ) {
+    if (!this.canAccessShelter(user, shelter)) {
       throw new ForbiddenException(
         'You are not authorized to access this shelter.',
       );
@@ -341,113 +315,6 @@ export class SheltersService {
 
     shelter.isActive = isActive;
     return shelter.save();
-  }
-
-  // Update occupancy and create an audit record.
-  async updateOccupancy(
-    id: string,
-    dto: OccupancyUpdateDto,
-    user: AuthenticatedUser,
-  ): Promise<ShelterDocument> {
-    const shelter = await this.getShelter(id);
-
-    if (!this.canUpdateOccupancy(user, shelter)) {
-      throw new ForbiddenException(
-        'Only assigned shelter staff and authorized officers can update occupancy.',
-      );
-    }
-
-    if (!shelter.isActive) {
-      throw new BadRequestException(
-        'An inactive shelter cannot receive occupancy updates.',
-      );
-    }
-
-    if (
-      !Number.isInteger(dto.count) ||
-      dto.count < 0
-    ) {
-      throw new BadRequestException(
-        'Count must be a non-negative integer.',
-      );
-    }
-
-    const previousOccupancy = shelter.currentOccupancy;
-    let nextOccupancy = previousOccupancy;
-
-    switch (dto.type) {
-      case OccupancyUpdateType.ARRIVAL:
-        if (dto.count <= 0) {
-          throw new BadRequestException(
-            'Arrival count must be greater than zero.',
-          );
-        }
-
-        nextOccupancy += dto.count;
-        break;
-
-      case OccupancyUpdateType.DEPARTURE:
-        if (dto.count <= 0) {
-          throw new BadRequestException(
-            'Departure count must be greater than zero.',
-          );
-        }
-
-        if (dto.count > previousOccupancy) {
-          throw new BadRequestException(
-            'Departure count cannot exceed current occupancy.',
-          );
-        }
-
-        nextOccupancy -= dto.count;
-        break;
-
-      case OccupancyUpdateType.VERIFIED_COUNT:
-        // A verified count replaces the current total.
-        nextOccupancy = dto.count;
-        break;
-
-      default:
-        throw new BadRequestException(
-          'Unsupported occupancy update type.',
-        );
-    }
-
-    // Do not block emergency arrivals when capacity is exceeded.
-    shelter.currentOccupancy = nextOccupancy;
-    shelter.lastOccupancyVerifiedAt = new Date();
-
-    // Save the updated shelter first.
-    const updatedShelter = await shelter.save();
-
-    // Record the actor and before/after occupancy values.
-    await this.occupancyHistoryModel.create({
-      shelterId: shelter._id,
-      changedBy: new Types.ObjectId(this.getUserId(user)),
-      changeType: dto.type,
-      previousOccupancy,
-      newOccupancy: nextOccupancy,
-      notes: dto.notes,
-    });
-
-    return updatedShelter;
-  }
-
-  // Retrieve the latest 100 occupancy history records for a shelter.
-  async getOccupancyHistory(
-    id: string,
-    user: AuthenticatedUser,
-  ): Promise<OccupancyHistory[]> {
-    // Verify the user is authorized to access this shelter.
-    await this.findOne(id, user);
-
-    return this.occupancyHistoryModel
-      .find({
-        shelterId: new Types.ObjectId(id),
-      })
-      .sort({ createdAt: -1 })
-      .limit(100)
-      .exec();
   }
 
   // Validate the ID and retrieve the shelter.

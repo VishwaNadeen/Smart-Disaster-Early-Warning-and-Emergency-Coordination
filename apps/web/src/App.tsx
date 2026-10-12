@@ -22,14 +22,14 @@ function App() {
     setSession(null)
   }
 
-  // Show the common login screen when nobody is signed in.
+  // Show the login page when nobody is signed in.
   if (!session) {
     return <Login onLogin={handleLogin} />
   }
 
   const { user, token } = session
 
-  // DMC and District Officers share one dashboard.
+  // DMC and District Officers share the same dashboard.
   switch (user.role) {
     case 'DUTY_OFFICER':
     case 'DISTRICT_OFFICER':
@@ -44,6 +44,7 @@ function App() {
         />
       )
 
+    // Administrators use the Admin Dashboard.
     case 'ADMIN':
     case 'SYSTEM_ADMIN':
       return (
@@ -54,9 +55,11 @@ function App() {
         />
       )
 
+    // Shelter Staff use the Shelter Staff Dashboard.
     case 'SHELTER_STAFF':
       return (
         <ShelterStaffDashboard
+          token={token}
           fullName={user.fullName}
           email={user.email}
           district={user.district}
@@ -64,6 +67,7 @@ function App() {
         />
       )
 
+    // Display an access-denied message for unsupported roles.
     default:
       return (
         <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
@@ -71,10 +75,13 @@ function App() {
             <h1 className="text-xl font-bold text-slate-900">
               Access denied
             </h1>
+
             <p className="mt-2 text-sm text-slate-600">
               Your account is not authorized for these dashboards.
             </p>
+
             <button
+              type="button"
               onClick={handleLogout}
               className="mt-5 rounded-lg bg-blue-600 px-5 py-2.5 text-white hover:bg-blue-700"
             >

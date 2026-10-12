@@ -26,12 +26,14 @@ import {
 } from '../users/schemas/user.schema';
 
 import { SheltersService } from './shelters.service';
+import { ShelterStaffService } from './shelter-staff.service';
+
 import { CreateShelterDto } from './dto/create-shelter.dto';
+import { CreateShelterStaffDto } from './dto/create-shelter-staff.dto';
 import { UpdateShelterDto } from './dto/update-shelter.dto';
-import { OccupancyUpdateDto } from './dto/occupancy-update.dto';
+
 import { ShelterOperationalStatus } from './schemas/shelter.schema';
 
-// Fields attached to req.user by the existing JWT strategy.
 interface AuthenticatedRequest extends Request {
   user: {
     id: string;
@@ -40,7 +42,6 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
-// Current user permissions required by the shelter service.
 interface ShelterActor {
   id: string;
   role: UserRole;
@@ -54,13 +55,12 @@ interface ShelterActor {
 export class SheltersController {
   constructor(
     private readonly sheltersService: SheltersService,
+    private readonly shelterStaffService: ShelterStaffService,
 
-    // Load current user permissions from MongoDB.
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
   ) {}
 
-  // Load the authenticated user and their current assignments.
   private async getAuthenticatedUser(
     req: AuthenticatedRequest,
   ): Promise<ShelterActor> {
@@ -102,6 +102,22 @@ export class SheltersController {
     return this.sheltersService.create(dto, user);
   }
 
+  // Create and assign a Shelter Staff account.
+  @Post(':id/staff')
+  async createStaffForShelter(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: CreateShelterStaffDto,
+  ) {
+    const user = await this.getAuthenticatedUser(req);
+
+    return this.shelterStaffService.createForShelter(
+      id,
+      dto,
+      user,
+    );
+  }
+
   // List shelters with optional filters.
   @Get()
   async findAll(
@@ -113,7 +129,6 @@ export class SheltersController {
   ) {
     const user = await this.getAuthenticatedUser(req);
 
-    // Validate the operational status query parameter.
     if (
       operationalStatus &&
       !Object.values(ShelterOperationalStatus).includes(
@@ -136,21 +151,7 @@ export class SheltersController {
     });
   }
 
-  // Retrieve occupancy history before the generic :id route.
-  @Get(':id/occupancy/history')
-  async getOccupancyHistory(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
-    const user = await this.getAuthenticatedUser(req);
-
-    return this.sheltersService.getOccupancyHistory(
-      id,
-      user,
-    );
-  }
-
-  // Retrieve one shelter by ID.
+  // Retrieve one shelter.
   @Get(':id')
   async findOne(
     @Req() req: AuthenticatedRequest,
@@ -189,21 +190,5 @@ export class SheltersController {
   ) {
     const user = await this.getAuthenticatedUser(req);
     return this.sheltersService.setActive(id, true, user);
-  }
-
-  // Record arrivals, departures, or a verified occupancy count.
-  @Patch(':id/occupancy')
-  async updateOccupancy(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-    @Body() dto: OccupancyUpdateDto,
-  ) {
-    const user = await this.getAuthenticatedUser(req);
-
-    return this.sheltersService.updateOccupancy(
-      id,
-      dto,
-      user,
-    );
   }
 }

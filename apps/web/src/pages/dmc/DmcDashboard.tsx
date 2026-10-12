@@ -1,11 +1,8 @@
-
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
-  Activity,
   Bell,
   Building2,
   ChevronDown,
-  ClipboardList,
   House,
   LayoutDashboard,
   LogOut,
@@ -14,19 +11,17 @@ import {
   Search,
   Settings,
   ShieldCheck,
-  Users,
   RefreshCw,
   Pencil,
   PackagePlus,
+  UserPlus,
 } from 'lucide-react'
-
 import CreateShelterForm from './CreateShelterForm'
+import CreateShelterStaffForm from './CreateShelterStaffForm'
 import EditShelterForm, { type ShelterToEdit } from './EditShelterForm'
 import ShelterMap, { type MapShelter } from './ShelterMap'
 import ReliefSuppliesPage from './ReliefSuppliesPage'
-
 const API_URL = 'http://localhost:3000/api'
-
 interface DmcDashboardProps {
   token: string
   fullName: string
@@ -35,54 +30,39 @@ interface DmcDashboardProps {
   district?: string
   onLogout: () => void
 }
-
 type DashboardSection =
   | 'Overview'
   | 'Shelters'
-  | 'Occupancy Monitoring'
-  | 'Occupancy History'
   | 'Relief Supplies'
-
 type Shelter = Omit<ShelterToEdit, 'operationalStatus'> &
   Omit<MapShelter, 'operationalStatus'> & {
     operationalStatus: 'OPEN' | 'CLOSED' | 'MAINTENANCE'
-    currentOccupancy?: number
     isActive?: boolean
   }
-
 interface ShelterApiResponse {
   data?: Shelter[] | { shelters?: Shelter[]; items?: Shelter[] }
   shelters?: Shelter[]
   items?: Shelter[]
   message?: string
 }
-
 const navigation = [
   { label: 'Overview' as const, icon: LayoutDashboard },
   { label: 'Shelters' as const, icon: House },
-  { label: 'Occupancy Monitoring' as const, icon: Users },
-  { label: 'Occupancy History' as const, icon: ClipboardList },
   { label: 'Relief Supplies' as const, icon: PackagePlus },
 ]
-
 function getSheltersFromResponse(
   result: ShelterApiResponse | Shelter[],
 ): Shelter[] {
   if (Array.isArray(result)) return result
-
   if (Array.isArray(result.data)) return result.data
-
   if (result.data && !Array.isArray(result.data)) {
     if (Array.isArray(result.data.shelters)) return result.data.shelters
     if (Array.isArray(result.data.items)) return result.data.items
   }
-
   if (Array.isArray(result.shelters)) return result.shelters
   if (Array.isArray(result.items)) return result.items
-
   return []
 }
-
 export default function DmcDashboard({
   token,
   fullName,
@@ -101,11 +81,11 @@ export default function DmcDashboard({
   const [isLoadingShelters, setIsLoadingShelters] = useState(false)
   const [shelterError, setShelterError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
-
+  const [staffShelter, setStaffShelter] = useState<Shelter | null>(null)
+  const [staffSuccess, setStaffSuccess] = useState('')
   const loadShelters = useCallback(async () => {
     setIsLoadingShelters(true)
     setShelterError('')
-
     try {
       const response = await fetch(`${API_URL}/shelters`, {
         method: 'GET',
@@ -114,9 +94,7 @@ export default function DmcDashboard({
           Accept: 'application/json',
         },
       })
-
       const result = await response.json().catch(() => null)
-
       if (!response.ok) {
         const message =
           typeof result?.message === 'string'
@@ -124,7 +102,6 @@ export default function DmcDashboard({
             : `Unable to load shelters (HTTP ${response.status}).`
         throw new Error(message)
       }
-
       setShelters(getSheltersFromResponse(result ?? {}))
     } catch (error) {
       setShelterError(
@@ -136,44 +113,61 @@ export default function DmcDashboard({
       setIsLoadingShelters(false)
     }
   }, [token])
-
   useEffect(() => {
     void loadShelters()
   }, [loadShelters, refreshKey])
-
   function handleShelterCreated() {
     setShowCreateForm(false)
     setEditingShelter(null)
     setActiveSection('Shelters')
     setRefreshKey((previous) => previous + 1)
   }
-
   function handleShelterUpdated() {
     setEditingShelter(null)
     setShowCreateForm(false)
     setActiveSection('Shelters')
     setRefreshKey((previous) => previous + 1)
   }
-
   function handleEditShelter(shelter: Shelter) {
     const shelterId = shelter._id ?? shelter.id
-
     if (!shelterId) {
       setShelterError(
         'Cannot edit this shelter because its ID was not returned by the API.',
       )
       return
     }
-
     setShelterError('')
     setShowCreateForm(false)
+    setStaffShelter(null)
     setEditingShelter(shelter)
+  }
+  function handleCreateStaff(shelter: Shelter) {
+    const shelterId = shelter._id ?? shelter.id
+
+    if (!shelterId) {
+      setShelterError(
+        'Cannot create a staff account because this shelter has no ID.',
+      )
+      return
+    }
+
+    setShelterError('')
+    setStaffSuccess('')
+    setShowCreateForm(false)
+    setEditingShelter(null)
+    setStaffShelter(shelter)
+  }
+
+  function handleStaffCreated() {
+    setStaffShelter(null)
+    setStaffSuccess('Shelter Staff account created successfully.')
+    setActiveSection('Shelters')
+    setRefreshKey((previous) => previous + 1)
   }
 
   const filteredShelters = shelters.filter((shelter) => {
     const query = searchTerm.trim().toLowerCase()
     if (!query) return true
-
     return [
       shelter.name,
       shelter.shelterCode,
@@ -186,27 +180,14 @@ export default function DmcDashboard({
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query))
   })
-
   const totalCapacity = shelters.reduce(
     (total, shelter) => total + (Number(shelter.maximumCapacity) || 0),
     0,
   )
-
-  const currentOccupancy = shelters.reduce(
-    (total, shelter) => total + (Number(shelter.currentOccupancy) || 0),
-    0,
-  )
-
   const activeShelters = shelters.filter(
     (shelter) =>
       shelter.isActive !== false && shelter.operationalStatus === 'OPEN',
   ).length
-
-  const utilization =
-    totalCapacity > 0
-      ? `${Math.round((currentOccupancy / totalCapacity) * 100)}%`
-      : '—'
-
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r border-slate-200 bg-white lg:flex">
@@ -221,7 +202,6 @@ export default function DmcDashboard({
             <p className="text-xs text-slate-500">Operations Portal</p>
           </div>
         </div>
-
         <div className="px-4 py-6">
           <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
             Main menu
@@ -235,6 +215,7 @@ export default function DmcDashboard({
                   setActiveSection(label)
                   setShowCreateForm(false)
                   setEditingShelter(null)
+                  setStaffShelter(null)
                 }}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition ${
                   activeSection === label
@@ -248,7 +229,6 @@ export default function DmcDashboard({
             ))}
           </nav>
         </div>
-
         <div className="mt-auto border-t border-slate-200 p-4">
           <div className="mb-3 flex items-center gap-3 rounded-lg bg-slate-50 p-3">
             <div className="rounded-full bg-teal-100 p-2 text-teal-700">
@@ -273,7 +253,6 @@ export default function DmcDashboard({
           </button>
         </div>
       </aside>
-
       <div className="lg:pl-64">
         <header className="sticky top-0 z-10 flex h-20 items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8">
           <div>
@@ -303,7 +282,6 @@ export default function DmcDashboard({
             </div>
           </div>
         </header>
-
         <main className="mx-auto max-w-7xl space-y-7 px-5 py-8 sm:px-8">
           <section>
             <p className="text-sm font-medium text-teal-700">Welcome back</p>
@@ -315,7 +293,6 @@ export default function DmcDashboard({
               activities from one place.
             </p>
           </section>
-
           <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-bold text-slate-900">
@@ -342,12 +319,12 @@ export default function DmcDashboard({
                   Refresh
                 </button>
               )}
-
               {activeSection === 'Shelters' && (
                 <button
                   type="button"
                   onClick={() => {
                     setEditingShelter(null)
+                    setStaffShelter(null)
                     setShelterError('')
                     setShowCreateForm(true)
                   }}
@@ -359,7 +336,6 @@ export default function DmcDashboard({
               )}
             </div>
           </section>
-
           {showCreateForm && (
             <CreateShelterForm
               token={token}
@@ -367,7 +343,6 @@ export default function DmcDashboard({
               onCancel={() => setShowCreateForm(false)}
             />
           )}
-
           {!showCreateForm && editingShelter && (
             <EditShelterForm
               shelter={editingShelter}
@@ -376,12 +351,39 @@ export default function DmcDashboard({
               onCancel={() => setEditingShelter(null)}
             />
           )}
+          {!showCreateForm && !editingShelter && staffShelter && (
+            <CreateShelterStaffForm
+              shelterId={String(staffShelter._id ?? staffShelter.id)}
+              shelterName={staffShelter.name}
+              token={token}
+              onCreated={handleStaffCreated}
+              onCancel={() => setStaffShelter(null)}
+            />
+          )}
+
+          {activeSection === 'Shelters' && staffSuccess && (
+            <div
+              role="status"
+              className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span>{staffSuccess}</span>
+                <button
+                  type="button"
+                  onClick={() => setStaffSuccess('')}
+                  className="font-semibold underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
 
           {!showCreateForm &&
             !editingShelter &&
             activeSection === 'Overview' && (
               <>
-                <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   <SummaryCard
                     title="Total Shelters"
                     value={isLoadingShelters ? '…' : String(shelters.length)}
@@ -395,23 +397,12 @@ export default function DmcDashboard({
                     icon={<House size={22} />}
                   />
                   <SummaryCard
-                    title="Current Occupancy"
-                    value={
-                      isLoadingShelters
-                        ? '…'
-                        : currentOccupancy.toLocaleString()
-                    }
-                    description="People currently accommodated"
-                    icon={<Users size={22} />}
-                  />
-                  <SummaryCard
-                    title="Capacity Utilization"
-                    value={isLoadingShelters ? '…' : utilization}
-                    description="Occupancy compared with total capacity"
-                    icon={<Activity size={22} />}
+                    title="Total Shelter Capacity"
+                    value={isLoadingShelters ? '…' : totalCapacity.toLocaleString()}
+                    description="Combined registered maximum capacity"
+                    icon={<Building2 size={22} />}
                   />
                 </section>
-
                 {shelterError && (
                   <div
                     role="alert"
@@ -428,7 +419,6 @@ export default function DmcDashboard({
                     </button>
                   </div>
                 )}
-
                 <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
                   <div className="mb-5 flex items-center justify-between gap-3">
                     <div>
@@ -441,7 +431,6 @@ export default function DmcDashboard({
                     </div>
                     <MapPinned className="text-teal-600" size={23} />
                   </div>
-
                   {isLoadingShelters && shelters.length === 0 ? (
                     <div className="flex items-center justify-center gap-2 py-14 text-sm text-slate-500">
                       <RefreshCw size={18} className="animate-spin" />
@@ -467,7 +456,6 @@ export default function DmcDashboard({
                 </section>
               </>
             )}
-
           {!showCreateForm &&
             !editingShelter &&
             activeSection === 'Shelters' && (
@@ -494,7 +482,6 @@ export default function DmcDashboard({
                     />
                   </div>
                 </div>
-
                 {shelterError && (
                   <div
                     role="alert"
@@ -508,7 +495,6 @@ export default function DmcDashboard({
                     </p>
                   </div>
                 )}
-
                 {isLoadingShelters ? (
                   <div className="flex items-center justify-center gap-2 py-14 text-sm text-slate-500">
                     <RefreshCw size={18} className="animate-spin" />
@@ -536,7 +522,6 @@ export default function DmcDashboard({
                           <th className="px-4 py-3 font-semibold">Shelter</th>
                           <th className="px-4 py-3 font-semibold">Location</th>
                           <th className="px-4 py-3 font-semibold">Capacity</th>
-                          <th className="px-4 py-3 font-semibold">Occupancy</th>
                           <th className="px-4 py-3 font-semibold">Status</th>
                           <th className="px-4 py-3 text-right font-semibold">
                             Actions
@@ -574,9 +559,6 @@ export default function DmcDashboard({
                               {shelter.maximumCapacity}
                             </td>
                             <td className="px-4 py-4">
-                              {shelter.currentOccupancy ?? 0}
-                            </td>
-                            <td className="px-4 py-4">
                               <span
                                 className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                                   shelter.operationalStatus === 'OPEN'
@@ -593,14 +575,24 @@ export default function DmcDashboard({
                               </span>
                             </td>
                             <td className="px-4 py-4 text-right">
-                              <button
-                                type="button"
-                                onClick={() => handleEditShelter(shelter)}
-                                className="inline-flex items-center gap-2 rounded-lg border border-teal-200 px-3 py-2 text-sm font-semibold text-teal-700 transition hover:bg-teal-50"
-                              >
-                                <Pencil size={15} />
-                                Edit
-                              </button>
+                              <div className="flex flex-wrap justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleCreateStaff(shelter)}
+                                  className="inline-flex items-center gap-2 rounded-lg border border-teal-200 px-3 py-2 text-sm font-semibold text-teal-700 transition hover:bg-teal-50"
+                                >
+                                  <UserPlus size={15} />
+                                  Create Staff
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditShelter(shelter)}
+                                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                >
+                                  <Pencil size={15} />
+                                  Edit
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -610,30 +602,6 @@ export default function DmcDashboard({
                 )}
               </section>
             )}
-
-          {!showCreateForm &&
-            !editingShelter &&
-            (activeSection === 'Occupancy Monitoring' ||
-              activeSection === 'Occupancy History') && (
-              <section className="rounded-xl border border-slate-200 bg-white p-6">
-                <div className="flex items-center gap-3">
-                  {activeSection === 'Occupancy Monitoring' ? (
-                    <Users className="text-teal-600" size={24} />
-                  ) : (
-                    <ClipboardList className="text-teal-600" size={24} />
-                  )}
-                  <div>
-                    <h3 className="font-bold text-slate-900">
-                      {activeSection}
-                    </h3>
-                    <p className="text-sm text-slate-500">
-                      This section still needs its occupancy API integration.
-                    </p>
-                  </div>
-                </div>
-              </section>
-            )}
-
           {!showCreateForm &&
             !editingShelter &&
             activeSection === 'Relief Supplies' && (
@@ -643,7 +611,6 @@ export default function DmcDashboard({
                 district={district}
               />
             )}
-
           <footer className="flex items-center justify-between gap-3 border-t border-slate-200 pt-5 text-xs text-slate-400">
             <span>Disaster Management System</span>
             <span className="flex items-center gap-1.5">
@@ -656,14 +623,12 @@ export default function DmcDashboard({
     </div>
   )
 }
-
 interface SummaryCardProps {
   title: string
   value: string
   description: string
   icon: ReactNode
 }
-
 function SummaryCard({
   title,
   value,
