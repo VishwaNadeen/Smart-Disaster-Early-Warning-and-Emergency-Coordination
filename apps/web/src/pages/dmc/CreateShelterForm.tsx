@@ -41,6 +41,7 @@ interface CreateShelterPayload {
   notes?: string
 }
 
+// REVIEW [DRY]: ~80% of this file (fields, location cascade, validation, map) is duplicated in EditShelterForm - extract a shared ShelterFormFields + validateShelterForm().
 export default function CreateShelterForm({
   token,
   onCreated,
@@ -56,6 +57,7 @@ export default function CreateShelterForm({
     maximumCapacity: '100',
     latitude: '',
     longitude: '',
+    // REVIEW [Bug]: 'OPERATIONAL' is not a valid status - the select shows OPEN but this value is sent and the backend rejects it with 400; use 'OPEN'.
     operationalStatus: 'OPERATIONAL' as OperationalStatus,
     facilities: '',
     notes: '',

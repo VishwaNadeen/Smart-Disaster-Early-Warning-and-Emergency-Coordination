@@ -31,6 +31,7 @@ import { ReviewReliefSupplyRequestDto } from './dto/review-relief-supply-request
 interface AuthenticatedRequest extends Request {
   user: {
     id: string;
+    // REVIEW [Smell]: typed as string here but UserRole in the other controllers.
     role: string;
     email: string;
   };
@@ -47,6 +48,7 @@ export class ReliefSupplyRequestsController {
   ) {}
 
   // Load the authenticated user's current role and assignments.
+  // REVIEW [DRY/SRP]: identical to SheltersController.getAuthenticatedUser - move to a guard or a @CurrentUser() param decorator.
   private async getAuthenticatedUser(req: AuthenticatedRequest) {
     if (!req.user?.id) {
       throw new ForbiddenException(

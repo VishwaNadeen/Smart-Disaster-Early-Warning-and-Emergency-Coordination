@@ -50,6 +50,7 @@ const navigation = [
   { label: 'Shelters' as const, icon: House },
   { label: 'Relief Supplies' as const, icon: PackagePlus },
 ]
+// REVIEW [DRY]: duplicates asArray() in relief-supplies/api.ts - one response-unwrapping helper is enough.
 function getSheltersFromResponse(
   result: ShelterApiResponse | Shelter[],
 ): Shelter[] {
@@ -63,6 +64,7 @@ function getSheltersFromResponse(
   if (Array.isArray(result.items)) return result.items
   return []
 }
+// REVIEW [SRP/God Component]: layout, shelter loading, overview, shelter table and form switching all live here - extract SheltersSection and OverviewSection.
 export default function DmcDashboard({
   token,
   fullName,
@@ -76,6 +78,7 @@ export default function DmcDashboard({
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [editingShelter, setEditingShelter] =
     useState<ShelterToEdit | null>(null)
+  // REVIEW [Smell]: refreshKey only re-triggers loadShelters - calling loadShelters() directly is simpler.
   const [refreshKey, setRefreshKey] = useState(0)
   const [shelters, setShelters] = useState<Shelter[]>([])
   const [isLoadingShelters, setIsLoadingShelters] = useState(false)
@@ -96,6 +99,7 @@ export default function DmcDashboard({
       })
       const result = await response.json().catch(() => null)
       if (!response.ok) {
+        // REVIEW [Inconsistency]: array validation messages are ignored here, unlike the other forms that join them.
         const message =
           typeof result?.message === 'string'
             ? result.message

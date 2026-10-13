@@ -27,7 +27,6 @@ Desktop.ini
 # ============================================================
 
 # VS Code
-.vscode/
 !.vscode/extensions.json
 !.vscode/settings.json
 
@@ -83,8 +82,6 @@ build/
 .stylelintcache
 
 # Environment variables
-.env
-.env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -232,8 +229,6 @@ coverage/
 # ============================================================
 
 # Local environment files
-.env
-.env.*
 !.env.example
 
 # Local secrets
@@ -273,3 +268,4 @@ prisma/*.db
 
 .DS_Store
 .history/
+config.bat

@@ -11,7 +11,9 @@ import {
   AlertCircle,
   CheckCircle2,
 } from 'lucide-react'
+// REVIEW [DRY/Config]: API_URL is hard-coded in 6 files - read it once from import.meta.env.VITE_API_URL.
 const API_URL = 'http://localhost:3000/api'
+// REVIEW [DRY]: categories and units are also defined in relief-supplies/types.ts and SupplyInventorySection - share one source.
 const CATEGORIES = [
   { value: 'FOOD', label: 'Food' },
   { value: 'WATER', label: 'Water' },
@@ -89,6 +91,7 @@ function formatDate(value?: string) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
 }
+// REVIEW [SRP/God Component]: ~790 lines holding layout, data loading and 3 feature screens - split into MyShelterSection, RequestForm and MyRequestsList.
 export default function ShelterStaffDashboard({
   token,
   fullName,
@@ -116,6 +119,7 @@ export default function ShelterStaffDashboard({
     setIsLoadingShelter(true)
     setShelterError('')
     try {
+      // REVIEW [DRY]: fetch + headers + error parsing is repeated 3 times in this file - reuse a shared apiRequest() helper.
       const response = await fetch(`${API_URL}/shelters`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -139,6 +143,7 @@ export default function ShelterStaffDashboard({
             ? data.shelters
             : []
       // The endpoint must return shelters assigned to this staff member.
+      // REVIEW [Bug]: only the first shelter is used - staff assigned to several shelters cannot see or request for the others.
       const assignedShelter = list.find(
         (item: AssignedShelter) => item._id || item.id,
       ) as AssignedShelter | undefined
@@ -668,6 +673,7 @@ export default function ShelterStaffDashboard({
 }
 const inputClasses =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:bg-slate-50'
+// REVIEW [DRY]: SummaryCard, LoadingMessage and banners are copied in DmcDashboard and relief-supplies - move to a shared components/ui folder.
 interface SummaryCardProps {
   title: string
   value: string

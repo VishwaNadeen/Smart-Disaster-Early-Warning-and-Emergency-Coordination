@@ -72,6 +72,7 @@ export class ReliefSupplyRequestsService {
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
 
+    // REVIEW [DIP]: queries the ReliefSupply model directly; ask ReliefSuppliesService for the matching supply instead.
     @InjectModel(ReliefSupply.name)
     private readonly supplyModel: Model<ReliefSupplyDocument>,
 
@@ -161,6 +162,7 @@ export class ReliefSupplyRequestsService {
   async getOfficerRequests(user: AuthenticatedUser) {
     this.ensureRole(user, DMC_ROLES);
 
+    // REVIEW [Smell]: only PENDING is returned, so the DMC table's "Reviewed" branch and request history can never appear.
     const filter: Record<string, unknown> = {
       status: ReliefSupplyRequestStatus.PENDING,
     };
@@ -193,6 +195,7 @@ export class ReliefSupplyRequestsService {
   }
 
   // DMC officers approve or reject pending requests.
+  // REVIEW [SRP/Long Method]: review, supply matching, allocation and rollback in one ~220-line method - extract approveRequest() and rejectRequest().
   async reviewRequest(
     user: AuthenticatedUser,
     requestId: string,
@@ -283,6 +286,7 @@ export class ReliefSupplyRequestsService {
     }
 
     // Claim the request atomically before allocating stock.
+    // REVIEW [Reliability]: if the process crashes after this claim, the request stays APPROVED forever with no recovery path.
     const claimed = await this.requestModel
       .findOneAndUpdate(
         {
@@ -340,6 +344,7 @@ export class ReliefSupplyRequestsService {
         );
       }
 
+      // Fast-fail only; the atomic reservation inside distributionService.create() is the real stock guard.
       if (
         supply.availableQuantity < request.requestedQuantity
       ) {
@@ -417,6 +422,7 @@ export class ReliefSupplyRequestsService {
     }
   }
 
+  // REVIEW [DRY]: same district-merging logic exists in SheltersService, ShelterStaffService and ReliefSupplyDistributionsService.
   private getOfficerDistricts(
     user: AuthenticatedUser,
   ): string[] {
