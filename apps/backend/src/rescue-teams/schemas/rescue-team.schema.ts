@@ -49,6 +49,7 @@ export class RescueTeam {
 
   @Prop({
     required: true,
+    type: String,
     enum: RescueTeamType,
     default: RescueTeamType.ARMY,
     index: true,
@@ -84,6 +85,7 @@ export class RescueTeam {
   contactPhone?: string;
 
   @Prop({
+    type: String,
     enum: RescueTeamStatus,
     default: RescueTeamStatus.AVAILABLE,
     index: true,

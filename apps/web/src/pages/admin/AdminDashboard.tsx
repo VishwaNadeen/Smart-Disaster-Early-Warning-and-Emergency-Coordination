@@ -11,7 +11,11 @@ import {
   Users,
 } from 'lucide-react'
 
+import RescueRequestsSection from '../dmc/rescue/RescueRequestsSection'
+
 interface AdminDashboardProps {
+  // [SE3070 - ADDED] Existing authenticated session token.
+  token: string
   fullName: string
   email: string
   onLogout: () => void
@@ -26,6 +30,8 @@ const navigation = [
 ]
 
 export default function AdminDashboard({
+  // [SE3070 - ADDED]
+  token,
   fullName,
   email,
   onLogout,
@@ -236,6 +242,11 @@ export default function AdminDashboard({
                 monitoring will be integrated in a later step.
               </p>
             </article>
+          </section>
+
+          {/* [SE3070 - ADDED] Rescue requests and rescue-team assignment. */}
+          <section aria-label="Rescue team assignment">
+            <RescueRequestsSection token={token} />
           </section>
 
           <footer className="border-t border-slate-200 pt-5 text-xs text-slate-400">

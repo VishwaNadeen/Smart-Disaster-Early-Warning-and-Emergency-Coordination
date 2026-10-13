@@ -51,6 +51,7 @@ export class User {
   phone?: string;
 
   @Prop({
+    type: String,
     enum: UserRole,
     default: UserRole.CITIZEN,
   })

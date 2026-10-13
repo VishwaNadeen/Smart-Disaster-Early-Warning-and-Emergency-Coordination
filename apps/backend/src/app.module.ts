@@ -11,7 +11,6 @@ import { SheltersModule } from './shelters/shelters.module';
 import { ReliefSuppliesModule } from './relief-supplies/relief-supplies.module';
 import { RescueTeamsModule } from './rescue-teams/rescue-teams.module';
 import { HazardAlertsModule } from './hazard-alerts/hazard-alerts.module';
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -28,6 +27,7 @@ import { HazardAlertsModule } from './hazard-alerts/hazard-alerts.module';
     ReliefSuppliesModule,
     RescueTeamsModule,
     HazardAlertsModule,
+    HelpRequestsModule,
   ],
 })
 export class AppModule {}
