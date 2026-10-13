@@ -364,10 +364,10 @@ bool _mapReady = false;
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.example.mobile',
-                      ),
+  urlTemplate:
+      'https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=YOUR_MAPTILER_API_KEY',
+  userAgentPackageName: 'com.example.mobile',
+),
                       if (markerPosition != null)
                         MarkerLayer(
                           markers: [
