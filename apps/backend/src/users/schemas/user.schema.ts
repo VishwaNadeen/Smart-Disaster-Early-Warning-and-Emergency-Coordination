@@ -28,12 +28,14 @@ export enum UserRole {
 })
 export class User {
   @Prop({
+    type: String,
     required: true,
     trim: true,
   })
   fullName: string;
 
   @Prop({
+    type: String,
     required: true,
     unique: true,
     lowercase: true,
@@ -43,67 +45,84 @@ export class User {
   email: string;
 
   @Prop({
+    type: String,
     required: true,
   })
   passwordHash: string;
 
-  @Prop()
+  @Prop({
+    type: String,
+  })
   phone?: string;
 
   @Prop({
-    enum: UserRole,
+    type: String,
+    enum: Object.values(UserRole),
     default: UserRole.CITIZEN,
   })
   role: UserRole;
 
-  @Prop()
+  @Prop({
+    type: String,
+  })
   district?: string;
 
-  @Prop()
+  @Prop({
+    type: String,
+  })
   address?: string;
 
   @Prop({
+    type: Boolean,
     default: true,
   })
   isActive: boolean;
 
   @Prop({
+    type: Boolean,
     default: false,
     index: true,
   })
   emailVerified: boolean;
 
   @Prop({
+    type: Boolean,
     default: true,
   })
   mustCompleteProfile: boolean;
 
   @Prop({
+    type: String,
     trim: true,
   })
   officerIdNumber?: string;
 
   @Prop({
+    type: String,
     trim: true,
   })
   dmcNumber?: string;
 
   @Prop({
+    type: String,
     trim: true,
   })
   workingLocation?: string;
 
   @Prop({
+    type: String,
     trim: true,
   })
   officePhoneNumber?: string;
 
   @Prop({
+    type: String,
     trim: true,
   })
   residentialAddress?: string;
 
   @Prop({
+    type: String,
     trim: true,
   })
   officeAddress?: string;
@@ -124,13 +143,19 @@ export class User {
   assignedShelterIds: Types.ObjectId[];
 
   // Store only the SHA-256 token hash.
-  @Prop()
+  @Prop({
+    type: String,
+  })
   emailVerificationTokenHash?: string;
 
-  @Prop()
+  @Prop({
+    type: Date,
+  })
   emailVerificationExpiresAt?: Date;
 
-  @Prop()
+  @Prop({
+    type: Date,
+  })
   deletedAt?: Date;
 
   createdAt: Date;

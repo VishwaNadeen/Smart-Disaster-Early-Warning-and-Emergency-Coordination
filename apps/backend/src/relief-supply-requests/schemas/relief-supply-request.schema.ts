@@ -1,9 +1,9 @@
-
 import {
   Prop,
   Schema,
   SchemaFactory,
 } from '@nestjs/mongoose';
+
 import { HydratedDocument, Types } from 'mongoose';
 
 import {
@@ -42,13 +42,15 @@ export class ReliefSupplyRequest {
   requestedBy: Types.ObjectId;
 
   @Prop({
+    type: String,
     required: true,
-    enum: ReliefSupplyCategory,
+    enum: Object.values(ReliefSupplyCategory),
     index: true,
   })
   category: ReliefSupplyCategory;
 
   @Prop({
+    type: String,
     required: true,
     trim: true,
     maxlength: 100,
@@ -56,12 +58,14 @@ export class ReliefSupplyRequest {
   itemName: string;
 
   @Prop({
+    type: String,
     required: true,
-    enum: ReliefSupplyUnit,
+    enum: Object.values(ReliefSupplyUnit),
   })
   unit: ReliefSupplyUnit;
 
   @Prop({
+    type: Number,
     required: true,
     min: 1,
     validate: Number.isInteger,
@@ -69,6 +73,7 @@ export class ReliefSupplyRequest {
   requestedQuantity: number;
 
   @Prop({
+    type: String,
     required: true,
     trim: true,
     maxlength: 500,
@@ -76,7 +81,8 @@ export class ReliefSupplyRequest {
   reason: string;
 
   @Prop({
-    enum: ReliefSupplyRequestStatus,
+    type: String,
+    enum: Object.values(ReliefSupplyRequestStatus),
     default: ReliefSupplyRequestStatus.PENDING,
     index: true,
   })
@@ -90,16 +96,20 @@ export class ReliefSupplyRequest {
   reviewedBy?: Types.ObjectId;
 
   @Prop({
+    type: String,
     trim: true,
     maxlength: 500,
     default: '',
   })
   decisionNotes: string;
 
-  @Prop({ default: null })
+  @Prop({
+    type: Date,
+    default: null,
+  })
   reviewedAt?: Date;
 
-    @Prop({
+  @Prop({
     type: Types.ObjectId,
     ref: 'ReliefSupplyDistribution',
     default: null,
@@ -127,4 +137,3 @@ ReliefSupplyRequestSchema.index({
   shelterId: 1,
   createdAt: -1,
 });
-

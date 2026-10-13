@@ -37,16 +37,22 @@ export class ReliefSupplyDistribution {
   shelterId: Types.ObjectId;
 
   // Snapshot for historical records and reporting.
-  @Prop({ required: true, trim: true })
+  @Prop({
+    type: String,
+    required: true,
+    trim: true,
+  })
   shelterName: string;
 
   @Prop({
+    type: Number,
     required: true,
     min: 1,
   })
   allocatedQuantity: number;
 
   @Prop({
+    type: Number,
     required: true,
     min: 0,
     default: 0,
@@ -54,6 +60,7 @@ export class ReliefSupplyDistribution {
   dispatchedQuantity: number;
 
   @Prop({
+    type: Number,
     required: true,
     min: 0,
     default: 0,
@@ -69,19 +76,28 @@ export class ReliefSupplyDistribution {
   allocatedBy: Types.ObjectId;
 
   @Prop({
-    enum: ReliefSupplyDistributionStatus,
+    type: String,
+    enum: Object.values(ReliefSupplyDistributionStatus),
     default: ReliefSupplyDistributionStatus.ALLOCATED,
     index: true,
   })
   status: ReliefSupplyDistributionStatus;
 
-  @Prop({ trim: true, default: '' })
+  @Prop({
+    type: String,
+    trim: true,
+    default: '',
+  })
   notes: string;
 
-  @Prop()
+  @Prop({
+    type: Date,
+  })
   dispatchedAt?: Date;
 
-  @Prop()
+  @Prop({
+    type: Date,
+  })
   deliveredAt?: Date;
 }
 

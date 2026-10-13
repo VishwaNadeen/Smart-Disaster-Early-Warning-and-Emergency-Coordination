@@ -1,4 +1,3 @@
-
 import {
   Prop,
   Schema,
@@ -42,6 +41,7 @@ export enum ReliefSupplyStatus {
 })
 export class ReliefSupply {
   @Prop({
+    type: String,
     required: true,
     trim: true,
     index: true,
@@ -49,6 +49,7 @@ export class ReliefSupply {
   name: string;
 
   @Prop({
+    type: String,
     required: true,
     unique: true,
     uppercase: true,
@@ -57,20 +58,23 @@ export class ReliefSupply {
   supplyCode: string;
 
   @Prop({
+    type: String,
     required: true,
-    enum: ReliefSupplyCategory,
+    enum: Object.values(ReliefSupplyCategory),
     index: true,
   })
   category: ReliefSupplyCategory;
 
   @Prop({
+    type: String,
     required: true,
-    enum: ReliefSupplyUnit,
+    enum: Object.values(ReliefSupplyUnit),
   })
   unit: ReliefSupplyUnit;
 
   // Total physical stock recorded in inventory.
   @Prop({
+    type: Number,
     required: true,
     min: 0,
     default: 0,
@@ -79,6 +83,7 @@ export class ReliefSupply {
 
   // Stock currently available for new allocations.
   @Prop({
+    type: Number,
     required: true,
     min: 0,
     default: 0,
@@ -87,6 +92,7 @@ export class ReliefSupply {
 
   // Stock reserved for allocations but not yet dispatched.
   @Prop({
+    type: Number,
     required: true,
     min: 0,
     default: 0,
@@ -95,6 +101,7 @@ export class ReliefSupply {
 
   // Used to identify supplies that need replenishment.
   @Prop({
+    type: Number,
     required: true,
     min: 0,
     default: 10,
@@ -102,19 +109,22 @@ export class ReliefSupply {
   minimumStockLevel: number;
 
   @Prop({
+    type: String,
     trim: true,
     default: '',
   })
   storageLocation: string;
 
   @Prop({
+    type: String,
     trim: true,
     default: '',
   })
   description: string;
 
   @Prop({
-    enum: ReliefSupplyStatus,
+    type: String,
+    enum: Object.values(ReliefSupplyStatus),
     default: ReliefSupplyStatus.AVAILABLE,
     index: true,
   })

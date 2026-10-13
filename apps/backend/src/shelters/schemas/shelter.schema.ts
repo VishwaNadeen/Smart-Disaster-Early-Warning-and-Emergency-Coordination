@@ -23,12 +23,14 @@ export enum ShelterOperationalStatus {
 })
 export class Shelter {
   @Prop({
+    type: String,
     required: true,
     trim: true,
   })
   name: string;
 
   @Prop({
+    type: String,
     required: true,
     unique: true,
     uppercase: true,
@@ -37,12 +39,14 @@ export class Shelter {
   shelterCode: string;
 
   @Prop({
+    type: String,
     required: true,
     trim: true,
   })
   address: string;
 
   @Prop({
+    type: String,
     required: true,
     trim: true,
     index: true,
@@ -50,6 +54,7 @@ export class Shelter {
   city: string;
 
   @Prop({
+    type: String,
     required: true,
     trim: true,
     index: true,
@@ -57,37 +62,43 @@ export class Shelter {
   district: string;
 
   @Prop({
+    type: String,
     required: true,
     trim: true,
   })
   province: string;
 
   @Prop({
+    type: Number,
     min: 0,
     default: 0,
   })
   latitude: number;
 
   @Prop({
+    type: Number,
     min: 0,
     default: 0,
   })
   longitude: number;
 
   @Prop({
+    type: Number,
     required: true,
     min: 1,
   })
   maximumCapacity: number;
 
   @Prop({
-    enum: ShelterOperationalStatus,
+    type: String,
+    enum: Object.values(ShelterOperationalStatus),
     default: ShelterOperationalStatus.OPEN,
     index: true,
   })
   operationalStatus: ShelterOperationalStatus;
 
   @Prop({
+    type: Boolean,
     default: true,
     index: true,
   })
@@ -100,6 +111,7 @@ export class Shelter {
   facilities: string[];
 
   @Prop({
+    type: String,
     trim: true,
   })
   notes?: string;
