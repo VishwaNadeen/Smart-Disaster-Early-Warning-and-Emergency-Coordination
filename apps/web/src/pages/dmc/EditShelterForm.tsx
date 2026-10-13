@@ -108,6 +108,7 @@ export default function EditShelterForm({
     provinceOption?.zoom ??
     7
 
+  // REVIEW [Smell]: keeps province/district/city in two states and syncs them with an effect - store them only in `form` like CreateShelterForm.
   useEffect(() => {
     setForm((previous) => ({
       ...previous,
@@ -139,6 +140,7 @@ export default function EditShelterForm({
       return
     }
 
+    // REVIEW [DRY]: coordinate and capacity validation is copied from CreateShelterForm.
     const latitudeText = form.latitude.trim()
     const longitudeText = form.longitude.trim()
 

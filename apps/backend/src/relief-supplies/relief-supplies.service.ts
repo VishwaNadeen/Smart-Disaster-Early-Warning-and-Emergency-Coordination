@@ -20,6 +20,7 @@ import { UpdateReliefSupplyStockDto } from './dto/update-relief-supply-stock.dto
 
 import { UserRole } from '../users/schemas/user.schema';
 
+// REVIEW [DRY]: AuthenticatedUser is redefined in 5 backend files - move it to one shared auth type.
 interface AuthenticatedUser {
   id: string;
   role: UserRole;
@@ -34,6 +35,7 @@ export class ReliefSuppliesService {
 
   // Only authorized operational officers and administrators
   // can manage the central relief supply inventory.
+  // REVIEW [OCP/Inconsistency]: role list is hard-coded in 5 places; DUTY_OFFICER is global here but district-scoped in SheltersService.
   private canManageSupplies(user: AuthenticatedUser): boolean {
     return [
       UserRole.ADMIN,
@@ -44,6 +46,7 @@ export class ReliefSuppliesService {
   }
 
   // Determine the current status using available stock.
+  // REVIEW [DRY]: identical copy exists in ReliefSupplyDistributionsService - extract to a shared stock-status helper.
   private getStockStatus(
     availableQuantity: number,
     minimumStockLevel: number,
@@ -64,6 +67,7 @@ export class ReliefSuppliesService {
     dto: CreateReliefSupplyDto,
     user: AuthenticatedUser,
   ) {
+    // REVIEW [SRP]: every method repeats this role check - a RolesGuard/@Roles() decorator would move authorization out of business logic.
     if (!this.canManageSupplies(user)) {
       throw new ForbiddenException(
         'You are not authorized to register relief supplies.',
@@ -118,6 +122,7 @@ export class ReliefSuppliesService {
     const query: Record<string, unknown> = {};
 
     if (filters.search?.trim()) {
+      // REVIEW [DRY]: regex escaping is duplicated in SheltersService and ReliefSupplyRequestsService.
       const escapedSearch = filters.search
         .trim()
         .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -173,6 +178,7 @@ export class ReliefSuppliesService {
       );
     }
 
+    // REVIEW [Smell]: the DTO allows 0 (@Min(0)) but this rejects it - change the DTO to @Min(1) so validation lives in one place.
     if (dto.quantity <= 0) {
       throw new BadRequestException(
         'The quantity added must be greater than zero.',

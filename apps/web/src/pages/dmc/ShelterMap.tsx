@@ -47,6 +47,7 @@ function hasValidCoordinates(shelter: MapShelter) {
   const latitude = Number(shelter.latitude)
   const longitude = Number(shelter.longitude)
 
+  // REVIEW [Bug]: (0,0) passes this check, and the backend defaults missing coordinates to 0 - such shelters are drawn off the coast of Africa.
   return (
     Number.isFinite(latitude) &&
     Number.isFinite(longitude) &&
@@ -57,6 +58,7 @@ function hasValidCoordinates(shelter: MapShelter) {
   )
 }
 
+// REVIEW [OCP/DRY]: status-to-color mapping is re-implemented here, in the side panel below and in DmcDashboard - use one STATUS_STYLES map.
 function getMarkerIcon(status: string, selected: boolean) {
   const color =
     status === 'OPEN'

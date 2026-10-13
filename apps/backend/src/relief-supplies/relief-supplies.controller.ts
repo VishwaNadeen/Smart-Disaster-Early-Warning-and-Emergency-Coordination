@@ -32,6 +32,8 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
+// REVIEW [Security]: trusts the JWT role without reloading the user (Shelters/Requests controllers do), so a deactivated officer keeps access until the token expires.
+// REVIEW [SRP]: one controller serves two resources (inventory + distributions) - consider a separate DistributionsController.
 @Controller('relief-supplies')
 @UseGuards(JwtAuthGuard)
 export class ReliefSuppliesController {
@@ -96,6 +98,7 @@ export class ReliefSuppliesController {
   }
 
   // Add received stock to an existing supply.
+  // REVIEW [Smell]: no frontend calls this endpoint yet - restocking is not possible from the UI.
   @Post(':id/add-stock')
   addStock(
     @Param('id') id: string,

@@ -62,6 +62,7 @@ export class Shelter {
   })
   province: string;
 
+  // REVIEW [Bug]: default 0 makes shelters without coordinates look valid at (0,0) on the map; min: 0 also rejects negative lat/lng.
   @Prop({
     min: 0,
     default: 0,

@@ -55,6 +55,7 @@ export class SheltersService {
   }
 
   // Check district permissions for officers.
+  // REVIEW [Inconsistency]: DUTY_OFFICER is district-scoped here but global in relief supplies - define one shared access policy.
   private canAccessDistrict(
     user: AuthenticatedUser,
     district: string,
@@ -142,6 +143,7 @@ export class SheltersService {
   }
 
   // List shelters with optional filters.
+  // REVIEW [SRP]: filter building and role scoping are mixed in one method - extract buildScopeFilter(user).
   async findAll(
     user: AuthenticatedUser,
     filters: {
@@ -205,6 +207,7 @@ export class SheltersService {
         );
       }
 
+      // REVIEW [Bug]: this overwrites the district filter set above, so an officer filtering by one of their districts still gets all of them.
       query.district = {
         $in: districts.length ? districts : ['__NO_ACCESS__'],
       };
@@ -289,6 +292,7 @@ export class SheltersService {
       dto.shelterCode = normalizedCode;
     }
 
+    // Safe only because the global ValidationPipe whitelist strips fields such as isActive from the DTO.
     Object.assign(shelter, dto);
     return shelter.save();
   }
@@ -335,6 +339,7 @@ export class SheltersService {
   }
 
   // Escape special characters in user-supplied search filters.
+  // REVIEW [DRY]: same regex is inlined in ReliefSuppliesService and ReliefSupplyRequestsService - share one util.
   private escapeRegex(value: string): string {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }

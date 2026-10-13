@@ -40,6 +40,7 @@ interface AuthenticatedUser {
 
 @Injectable()
 export class ReliefSupplyDistributionsService {
+  // REVIEW [DIP]: injects the Shelter and User models of other modules directly instead of depending on SheltersService/UsersService.
   constructor(
     @InjectModel(ReliefSupply.name)
     private readonly supplyModel: Model<ReliefSupply>,
@@ -54,6 +55,7 @@ export class ReliefSupplyDistributionsService {
     private readonly userModel: Model<User>,
   ) {}
 
+  // REVIEW [DRY]: duplicate of ReliefSuppliesService.getStockStatus.
   private getStockStatus(
     availableQuantity: number,
     minimumStockLevel: number,
@@ -110,6 +112,7 @@ export class ReliefSupplyDistributionsService {
       );
     }
 
+    // REVIEW [DRY]: officer district lookup is repeated in findAll() below and in 3 other services - extract a shared DistrictAccessPolicy.
     const officer = await this.userModel
       .findById(user.id)
       .select('district assignedDistricts isActive')
@@ -216,6 +219,7 @@ export class ReliefSupplyDistributionsService {
       );
     }
 
+    // REVIEW [Concurrency]: quantity update and status update are two separate writes - a parallel allocation can leave status stale.
     updatedSupply.status = this.getStockStatus(
       updatedSupply.availableQuantity,
       updatedSupply.minimumStockLevel,
@@ -271,6 +275,7 @@ export class ReliefSupplyDistributionsService {
   }
 
   // Update dispatch, delivery, or cancellation status.
+  // REVIEW [SRP/Long Method]: ~235 lines mixing validation, state machine and stock accounting - split into validateTransition() and applyStockChange().
   async updateStatus(
     id: string,
     dto: UpdateReliefSupplyDistributionDto,
@@ -356,6 +361,7 @@ export class ReliefSupplyDistributionsService {
       );
     }
 
+    // REVIEW [OCP - good]: table-driven transitions are easy to extend; move this map to a module-level constant so it is not rebuilt per call.
     const validTransitions: Record<
       ReliefSupplyDistributionStatus,
       ReliefSupplyDistributionStatus[]
@@ -537,6 +543,7 @@ export class ReliefSupplyDistributionsService {
         ...(officer.assignedDistricts ?? []),
       ];
 
+      // REVIEW [Bug]: exact, case-sensitive district match, while verifyAllocationPermission() compares lowercase - an officer can miss distributions if casing differs.
       const shelters = await this.shelterModel
         .find({
           district: {

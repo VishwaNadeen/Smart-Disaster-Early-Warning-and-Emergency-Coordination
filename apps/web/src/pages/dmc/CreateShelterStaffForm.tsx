@@ -26,6 +26,7 @@ export default function CreateShelterStaffForm({
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // REVIEW [DRY]: the same input className string is repeated 4 times below - extract a constant or <TextField> component.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 

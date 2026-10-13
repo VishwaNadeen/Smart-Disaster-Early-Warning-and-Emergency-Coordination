@@ -61,6 +61,7 @@ export class SheltersController {
     private readonly userModel: Model<UserDocument>,
   ) {}
 
+  // REVIEW [DRY/DIP]: duplicated in ReliefSupplyRequestsController and injects UserModel into a controller - use a guard or @CurrentUser() decorator.
   private async getAuthenticatedUser(
     req: AuthenticatedRequest,
   ): Promise<ShelterActor> {
@@ -129,6 +130,7 @@ export class SheltersController {
   ) {
     const user = await this.getAuthenticatedUser(req);
 
+    // REVIEW [SRP]: query validation belongs in a DTO (e.g. ShelterQueryDto with @IsEnum), not in the controller.
     if (
       operationalStatus &&
       !Object.values(ShelterOperationalStatus).includes(

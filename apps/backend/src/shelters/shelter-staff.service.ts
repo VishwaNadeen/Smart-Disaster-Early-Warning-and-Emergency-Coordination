@@ -44,6 +44,7 @@ export class ShelterStaffService {
     dto: CreateShelterStaffDto,
     actor: ShelterStaffActor,
   ) {
+    // REVIEW [DRY]: role list and district check below repeat SheltersService.canAccessDistrict - reuse a shared access policy.
     const allowedRoles = [
       UserRole.DUTY_OFFICER,
       UserRole.DISTRICT_OFFICER,
@@ -57,6 +58,7 @@ export class ShelterStaffService {
       );
     }
 
+    // REVIEW [Smell]: invalid ID returns 404 here but 400 in SheltersService.getShelter.
     if (!Types.ObjectId.isValid(shelterId)) {
       throw new NotFoundException('Invalid shelter ID.');
     }
@@ -103,6 +105,7 @@ export class ShelterStaffService {
       );
     }
 
+    // REVIEW [SRP/DIP]: hashes passwords and writes users directly - delegate account creation to UsersService.
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
     const staff = await this.userModel.create({
