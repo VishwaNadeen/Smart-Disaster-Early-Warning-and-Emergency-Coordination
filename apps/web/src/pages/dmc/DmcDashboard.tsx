@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
   Activity,
@@ -17,18 +18,15 @@ import {
   Users,
   RefreshCw,
   Pencil,
-  PackagePlus,
   ShieldAlert,
   Megaphone,
 } from 'lucide-react'
 
 import CreateShelterForm from './CreateShelterForm'
 import EditShelterForm, { type ShelterToEdit } from './EditShelterForm'
-import ShelterMap, { type MapShelter } from './ShelterMap'
-import ReliefSuppliesPage from './ReliefSuppliesPage'
 import DisasterReportsSection from './DisasterReportsSection'
 import DisasterWarningsSection from './DisasterWarningsSection'
-import RescueTeamsSection from './RescueTeamsSection'
+import RescueOperationsSection from './rescue/RescueOperationsSection'
 
 const API_URL = 'http://localhost:3000/api'
 
@@ -50,14 +48,11 @@ type DashboardSection =
   | 'Rescue Teams'
   | 'Occupancy Monitoring'
   | 'Occupancy History'
-  | 'Relief Supplies'
 
-type Shelter = Omit<ShelterToEdit, 'operationalStatus'> &
-  Omit<MapShelter, 'operationalStatus'> & {
-    operationalStatus: 'OPEN' | 'CLOSED' | 'MAINTENANCE'
-    currentOccupancy?: number
-    isActive?: boolean
-  }
+interface Shelter extends ShelterToEdit {
+  currentOccupancy?: number
+  isActive?: boolean
+}
 
 interface ShelterApiResponse {
   data?: Shelter[] | { shelters?: Shelter[]; items?: Shelter[] }
@@ -74,20 +69,35 @@ const navigation = [
   { label: 'Rescue Teams' as const, icon: ShieldAlert },
   { label: 'Occupancy Monitoring' as const, icon: Users },
   { label: 'Occupancy History' as const, icon: ClipboardList },
-  { label: 'Relief Supplies' as const, icon: PackagePlus },
 ]
 
-function getSheltersFromResponse(
-  result: ShelterApiResponse | Shelter[],
-): Shelter[] {
-  if (Array.isArray(result)) return result
-  if (Array.isArray(result.data)) return result.data
-  if (result.data && !Array.isArray(result.data)) {
-    if (Array.isArray(result.data.shelters)) return result.data.shelters
-    if (Array.isArray(result.data.items)) return result.data.items
+function getSheltersFromResponse(result: ShelterApiResponse): Shelter[] {
+  if (Array.isArray(result)) {
+    return result as unknown as Shelter[]
   }
-  if (Array.isArray(result.shelters)) return result.shelters
-  if (Array.isArray(result.items)) return result.items
+
+  if (Array.isArray(result.data)) {
+    return result.data
+  }
+
+  if (result.data && !Array.isArray(result.data)) {
+    if (Array.isArray(result.data.shelters)) {
+      return result.data.shelters
+    }
+
+    if (Array.isArray(result.data.items)) {
+      return result.data.items
+    }
+  }
+
+  if (Array.isArray(result.shelters)) {
+    return result.shelters
+  }
+
+  if (Array.isArray(result.items)) {
+    return result.items
+  }
+
   return []
 }
 
@@ -102,9 +112,11 @@ export default function DmcDashboard({
 }: DmcDashboardProps) {
   const [activeSection, setActiveSection] =
     useState<DashboardSection>('Overview')
+
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [editingShelter, setEditingShelter] =
     useState<ShelterToEdit | null>(null)
+
   const [refreshKey, setRefreshKey] = useState(0)
   const [shelters, setShelters] = useState<Shelter[]>([])
   const [isLoadingShelters, setIsLoadingShelters] = useState(false)
@@ -117,17 +129,13 @@ export default function DmcDashboard({
   useEffect(() => {
     async function fetchPendingCount() {
       try {
-        const query = district
-          ? `?district=${encodeURIComponent(district)}`
-          : ''
+        const query = district ? `?district=${encodeURIComponent(district)}` : ''
         const res = await fetch(`${API_URL}/reports${query}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         const data = await res.json()
         const list = Array.isArray(data?.data) ? data.data : []
-        const pending = list.filter(
-          (r: any) => r.status === 'PENDING_VERIFICATION',
-        ).length
+        const pending = list.filter((r: any) => r.status === 'PENDING_VERIFICATION').length
         setPendingReportsCount(pending)
       } catch {
         // silent fallback
@@ -156,9 +164,7 @@ export default function DmcDashboard({
   useEffect(() => {
     async function fetchTeamsCount() {
       try {
-        const query = district
-          ? `?district=${encodeURIComponent(district)}`
-          : ''
+        const query = district ? `?district=${encodeURIComponent(district)}` : ''
         const res = await fetch(`${API_URL}/rescue-teams${query}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
@@ -175,6 +181,7 @@ export default function DmcDashboard({
   const loadShelters = useCallback(async () => {
     setIsLoadingShelters(true)
     setShelterError('')
+
     try {
       const response = await fetch(`${API_URL}/shelters`, {
         method: 'GET',
@@ -183,14 +190,18 @@ export default function DmcDashboard({
           Accept: 'application/json',
         },
       })
+
       const result = await response.json().catch(() => null)
+
       if (!response.ok) {
         const message =
           typeof result?.message === 'string'
             ? result.message
             : `Unable to load shelters (HTTP ${response.status}).`
+
         throw new Error(message)
       }
+
       setShelters(getSheltersFromResponse(result ?? {}))
     } catch (error) {
       setShelterError(
@@ -223,12 +234,14 @@ export default function DmcDashboard({
 
   function handleEditShelter(shelter: Shelter) {
     const shelterId = shelter._id ?? shelter.id
+
     if (!shelterId) {
       setShelterError(
         'Cannot edit this shelter because its ID was not returned by the API.',
       )
       return
     }
+
     setShelterError('')
     setShowCreateForm(false)
     setEditingShelter(shelter)
@@ -236,7 +249,9 @@ export default function DmcDashboard({
 
   const filteredShelters = shelters.filter((shelter) => {
     const query = searchTerm.trim().toLowerCase()
+
     if (!query) return true
+
     return [
       shelter.name,
       shelter.shelterCode,
@@ -254,14 +269,18 @@ export default function DmcDashboard({
     (total, shelter) => total + (Number(shelter.maximumCapacity) || 0),
     0,
   )
+
   const currentOccupancy = shelters.reduce(
     (total, shelter) => total + (Number(shelter.currentOccupancy) || 0),
     0,
   )
+
   const activeShelters = shelters.filter(
     (shelter) =>
-      shelter.isActive !== false && shelter.operationalStatus === 'OPEN',
+      shelter.isActive !== false &&
+      shelter.operationalStatus === 'OPEN',
   ).length
+
   const utilization =
     totalCapacity > 0
       ? `${Math.round((currentOccupancy / totalCapacity) * 100)}%`
@@ -275,9 +294,14 @@ export default function DmcDashboard({
           <div className="rounded-xl bg-teal-600 p-2.5 text-white">
             <ShieldCheck size={25} />
           </div>
+
           <div>
-            <h1 className="font-bold text-slate-900">Disaster Management</h1>
-            <p className="text-xs text-slate-500">Operations Portal</p>
+            <h1 className="font-bold text-slate-900">
+              Disaster Management
+            </h1>
+            <p className="text-xs text-slate-500">
+              Operations Portal
+            </p>
           </div>
         </div>
 
@@ -285,6 +309,7 @@ export default function DmcDashboard({
           <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
             Main menu
           </p>
+
           <nav className="space-y-1">
             {navigation.map(({ label, icon: Icon }) => (
               <button
@@ -330,6 +355,7 @@ export default function DmcDashboard({
             <div className="rounded-full bg-teal-100 p-2 text-teal-700">
               <MapPinned size={20} />
             </div>
+
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">
                 {role.replaceAll('_', ' ')}
@@ -339,6 +365,7 @@ export default function DmcDashboard({
               </p>
             </div>
           </div>
+
           <button
             type="button"
             onClick={onLogout}
@@ -361,6 +388,7 @@ export default function DmcDashboard({
               DMC Operations Dashboard
             </h2>
           </div>
+
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -369,6 +397,7 @@ export default function DmcDashboard({
             >
               <Bell size={19} />
             </button>
+
             <div className="hidden items-center gap-3 sm:flex">
               <div className="text-right">
                 <p className="text-sm font-semibold text-slate-800">
@@ -382,8 +411,11 @@ export default function DmcDashboard({
         </header>
 
         <main className="mx-auto max-w-7xl space-y-7 px-5 py-8 sm:px-8">
+          {/* Welcome */}
           <section>
-            <p className="text-sm font-medium text-teal-700">Welcome back</p>
+            <p className="text-sm font-medium text-teal-700">
+              Welcome back
+            </p>
             <h1 className="mt-1 text-2xl font-bold text-slate-900">
               Hello, {fullName}
             </h1>
@@ -393,7 +425,7 @@ export default function DmcDashboard({
             </p>
           </section>
 
-          {/* Section heading + actions (hidden for report/warning/team pages) */}
+          {/* Section heading and actions */}
           {activeSection !== 'Disaster Reports' &&
             activeSection !== 'Warning Alerts' &&
             activeSection !== 'Rescue Teams' && (
@@ -410,6 +442,7 @@ export default function DmcDashboard({
                       : 'Monitor shelter readiness and coordinate disaster response operations.'}
                   </p>
                 </div>
+
                 <div className="flex flex-wrap gap-2">
                   {activeSection === 'Shelters' && (
                     <>
@@ -425,9 +458,11 @@ export default function DmcDashboard({
                         />
                         Refresh
                       </button>
+
                       <button
                         type="button"
                         onClick={() => {
+                          setActiveSection('Shelters')
                           setEditingShelter(null)
                           setShelterError('')
                           setShowCreateForm(true)
@@ -443,7 +478,7 @@ export default function DmcDashboard({
               </section>
             )}
 
-          {/* Create / Edit forms */}
+          {/* Create shelter form */}
           {showCreateForm && (
             <CreateShelterForm
               token={token}
@@ -452,6 +487,7 @@ export default function DmcDashboard({
             />
           )}
 
+          {/* Edit shelter form */}
           {!showCreateForm && editingShelter && (
             <EditShelterForm
               shelter={editingShelter}
@@ -461,7 +497,7 @@ export default function DmcDashboard({
             />
           )}
 
-          {/* ===================== OVERVIEW ===================== */}
+          {/* Overview */}
           {!showCreateForm &&
             !editingShelter &&
             activeSection === 'Overview' && (
@@ -469,16 +505,22 @@ export default function DmcDashboard({
                 <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <SummaryCard
                     title="Total Shelters"
-                    value={isLoadingShelters ? '…' : String(shelters.length)}
+                    value={
+                      isLoadingShelters ? '…' : String(shelters.length)
+                    }
                     description="Registered shelters returned by the API"
                     icon={<Building2 size={22} />}
                   />
+
                   <SummaryCard
                     title="Open Shelters"
-                    value={isLoadingShelters ? '…' : String(activeShelters)}
+                    value={
+                      isLoadingShelters ? '…' : String(activeShelters)
+                    }
                     description="Shelters with OPEN status"
                     icon={<House size={22} />}
                   />
+
                   <SummaryCard
                     title="Current Occupancy"
                     value={
@@ -489,6 +531,7 @@ export default function DmcDashboard({
                     description="People currently accommodated"
                     icon={<Users size={22} />}
                   />
+
                   <SummaryCard
                     title="Capacity Utilization"
                     value={isLoadingShelters ? '…' : utilization}
@@ -497,7 +540,6 @@ export default function DmcDashboard({
                   />
                 </section>
 
-                {/* Quick action cards */}
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
                   <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
                     <div className="flex items-center justify-between gap-3">
@@ -513,6 +555,7 @@ export default function DmcDashboard({
                         <Building2 size={22} />
                       </div>
                     </div>
+
                     <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-4">
                       <p className="text-sm font-medium text-slate-700">
                         {shelters.length} shelter(s) loaded
@@ -525,6 +568,7 @@ export default function DmcDashboard({
                         View shelters →
                       </button>
                     </div>
+
                     {shelterError && (
                       <p role="alert" className="mt-3 text-sm text-red-600">
                         {shelterError}
@@ -536,9 +580,7 @@ export default function DmcDashboard({
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <h3 className="font-bold text-slate-900">
-                          {district
-                            ? `${district} District Reports`
-                            : 'District Reports'}
+                          {district ? `${district} District Reports` : 'District Reports'}
                         </h3>
                         <p className="mt-1 text-sm text-slate-500">
                           Citizen & field hazard reports
@@ -548,13 +590,11 @@ export default function DmcDashboard({
                         <AlertTriangle size={22} />
                       </div>
                     </div>
-                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-100 bg-amber-50/50 p-4">
+
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-amber-50/50 p-4 border border-amber-100">
                       <div className="flex items-center gap-2 text-sm text-slate-800">
                         <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
-                        <span className="font-bold text-amber-900">
-                          {pendingReportsCount}
-                        </span>{' '}
-                        pending verification
+                        <span className="font-bold text-amber-900">{pendingReportsCount}</span> pending verification
                       </div>
                       <button
                         type="button"
@@ -580,13 +620,11 @@ export default function DmcDashboard({
                         <Megaphone size={22} />
                       </div>
                     </div>
-                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-100 bg-red-50/50 p-4">
+
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-red-50/50 p-4 border border-red-100">
                       <div className="flex items-center gap-2 text-sm text-slate-800">
-                        <span className="inline-flex h-2 w-2 animate-ping rounded-full bg-red-600" />
-                        <span className="font-bold text-red-900">
-                          {activeWarningsCount}
-                        </span>{' '}
-                        active bulletin(s)
+                        <span className="inline-flex h-2 w-2 rounded-full bg-red-600 animate-ping" />
+                        <span className="font-bold text-red-900">{activeWarningsCount}</span> active bulletin(s)
                       </div>
                       <button
                         type="button"
@@ -612,13 +650,11 @@ export default function DmcDashboard({
                         <ShieldAlert size={22} />
                       </div>
                     </div>
-                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-teal-100 bg-teal-50/50 p-4">
+
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-teal-50/50 p-4 border border-teal-100">
                       <div className="flex items-center gap-2 text-sm text-slate-800">
                         <span className="inline-flex h-2 w-2 rounded-full bg-teal-500" />
-                        <span className="font-bold text-teal-900">
-                          {rescueTeamsCount}
-                        </span>{' '}
-                        registered unit(s)
+                        <span className="font-bold text-teal-900">{rescueTeamsCount}</span> registered unit(s)
                       </div>
                       <button
                         type="button"
@@ -630,62 +666,10 @@ export default function DmcDashboard({
                     </div>
                   </section>
                 </div>
-
-                {/* Shelter Map */}
-                {shelterError && (
-                  <div
-                    role="alert"
-                    className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
-                  >
-                    <p className="font-semibold">Could not load shelters</p>
-                    <p className="mt-1">{shelterError}</p>
-                    <button
-                      type="button"
-                      onClick={() => void loadShelters()}
-                      className="mt-3 font-semibold underline"
-                    >
-                      Try again
-                    </button>
-                  </div>
-                )}
-
-                <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
-                  <div className="mb-5 flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-bold text-slate-900">
-                        Shelter Locations
-                      </h3>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Select a marker to view shelter details.
-                      </p>
-                    </div>
-                    <MapPinned className="text-teal-600" size={23} />
-                  </div>
-
-                  {isLoadingShelters && shelters.length === 0 ? (
-                    <div className="flex items-center justify-center gap-2 py-14 text-sm text-slate-500">
-                      <RefreshCw size={18} className="animate-spin" />
-                      Loading shelter locations…
-                    </div>
-                  ) : shelters.length > 0 ? (
-                    <ShelterMap shelters={shelters} />
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center">
-                      <House size={34} className="mx-auto text-slate-400" />
-                      <p className="mt-3 font-semibold text-slate-800">
-                        No shelters to display
-                      </p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Check the API response and your account permissions, or
-                        create a shelter with valid coordinates.
-                      </p>
-                    </div>
-                  )}
-                </section>
               </>
             )}
 
-          {/* ===================== SHELTERS ===================== */}
+          {/* Shelter list */}
           {!showCreateForm &&
             !editingShelter &&
             activeSection === 'Shelters' && (
@@ -699,6 +683,7 @@ export default function DmcDashboard({
                       {filteredShelters.length} shelter(s) displayed
                     </p>
                   </div>
+
                   <div className="relative w-full sm:max-w-sm">
                     <Search
                       size={18}
@@ -734,7 +719,10 @@ export default function DmcDashboard({
                   </div>
                 ) : !shelterError && filteredShelters.length === 0 ? (
                   <div className="mt-5 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center">
-                    <House size={34} className="mx-auto text-slate-400" />
+                    <House
+                      size={34}
+                      className="mx-auto text-slate-400"
+                    />
                     <p className="mt-3 font-semibold text-slate-800">
                       {shelters.length === 0
                         ? 'No shelters returned'
@@ -751,16 +739,27 @@ export default function DmcDashboard({
                     <table className="w-full min-w-[950px] text-left text-sm">
                       <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                         <tr>
-                          <th className="px-4 py-3 font-semibold">Shelter</th>
-                          <th className="px-4 py-3 font-semibold">Location</th>
-                          <th className="px-4 py-3 font-semibold">Capacity</th>
-                          <th className="px-4 py-3 font-semibold">Occupancy</th>
-                          <th className="px-4 py-3 font-semibold">Status</th>
+                          <th className="px-4 py-3 font-semibold">
+                            Shelter
+                          </th>
+                          <th className="px-4 py-3 font-semibold">
+                            Location
+                          </th>
+                          <th className="px-4 py-3 font-semibold">
+                            Capacity
+                          </th>
+                          <th className="px-4 py-3 font-semibold">
+                            Occupancy
+                          </th>
+                          <th className="px-4 py-3 font-semibold">
+                            Status
+                          </th>
                           <th className="px-4 py-3 text-right font-semibold">
                             Actions
                           </th>
                         </tr>
                       </thead>
+
                       <tbody className="divide-y divide-slate-100">
                         {filteredShelters.map((shelter, index) => (
                           <tr
@@ -780,6 +779,7 @@ export default function DmcDashboard({
                                 {shelter.shelterCode}
                               </p>
                             </td>
+
                             <td className="px-4 py-4">
                               <p className="text-slate-800">
                                 {shelter.city}, {shelter.district}
@@ -788,12 +788,15 @@ export default function DmcDashboard({
                                 {shelter.province}
                               </p>
                             </td>
+
                             <td className="px-4 py-4">
                               {shelter.maximumCapacity}
                             </td>
+
                             <td className="px-4 py-4">
                               {shelter.currentOccupancy ?? 0}
                             </td>
+
                             <td className="px-4 py-4">
                               <span
                                 className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -811,6 +814,7 @@ export default function DmcDashboard({
                                 ) ?? 'Unknown'}
                               </span>
                             </td>
+
                             <td className="px-4 py-4 text-right">
                               <button
                                 type="button"
@@ -830,7 +834,7 @@ export default function DmcDashboard({
               </section>
             )}
 
-          {/* ===================== DISASTER REPORTS ===================== */}
+          {/* Disaster Reports section */}
           {!showCreateForm &&
             !editingShelter &&
             activeSection === 'Disaster Reports' && (
@@ -843,7 +847,7 @@ export default function DmcDashboard({
               />
             )}
 
-          {/* ===================== WARNING ALERTS ===================== */}
+          {/* Warning Alerts section */}
           {!showCreateForm &&
             !editingShelter &&
             activeSection === 'Warning Alerts' && (
@@ -856,11 +860,12 @@ export default function DmcDashboard({
               />
             )}
 
-          {/* ===================== RESCUE TEAMS ===================== */}
+          {/* Rescue Teams section */}
           {!showCreateForm &&
             !editingShelter &&
             activeSection === 'Rescue Teams' && (
-              <RescueTeamsSection
+              /* [SE3070 - MODIFIED] Dedicated views for citizen requests and rescue teams. */
+              <RescueOperationsSection
                 token={token}
                 registeredDistrict={district}
                 assignedDistricts={assignedDistricts}
@@ -868,7 +873,7 @@ export default function DmcDashboard({
               />
             )}
 
-          {/* ===================== OCCUPANCY ===================== */}
+          {/* Occupancy sections */}
           {!showCreateForm &&
             !editingShelter &&
             (activeSection === 'Occupancy Monitoring' ||
@@ -880,6 +885,7 @@ export default function DmcDashboard({
                   ) : (
                     <ClipboardList className="text-teal-600" size={24} />
                   )}
+
                   <div>
                     <h3 className="font-bold text-slate-900">
                       {activeSection}
@@ -892,17 +898,7 @@ export default function DmcDashboard({
               </section>
             )}
 
-          {/* ===================== RELIEF SUPPLIES ===================== */}
-          {!showCreateForm &&
-            !editingShelter &&
-            activeSection === 'Relief Supplies' && (
-              <ReliefSuppliesPage
-                token={token}
-                role={role}
-                district={district}
-              />
-            )}
-
+          {/* Footer */}
           <footer className="flex items-center justify-between gap-3 border-t border-slate-200 pt-5 text-xs text-slate-400">
             <span>Disaster Management System</span>
             <span className="flex items-center gap-1.5">
@@ -923,7 +919,12 @@ interface SummaryCardProps {
   icon: ReactNode
 }
 
-function SummaryCard({ title, value, description, icon }: SummaryCardProps) {
+function SummaryCard({
+  title,
+  value,
+  description,
+  icon,
+}: SummaryCardProps) {
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -931,8 +932,12 @@ function SummaryCard({ title, value, description, icon }: SummaryCardProps) {
           <p className="text-sm font-medium text-slate-500">{title}</p>
           <p className="mt-3 text-3xl font-bold text-slate-900">{value}</p>
         </div>
-        <div className="rounded-lg bg-teal-50 p-3 text-teal-700">{icon}</div>
+
+        <div className="rounded-lg bg-teal-50 p-3 text-teal-700">
+          {icon}
+        </div>
       </div>
+
       <p className="mt-3 text-xs text-slate-500">{description}</p>
     </article>
   )

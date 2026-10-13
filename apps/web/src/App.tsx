@@ -49,6 +49,7 @@ function App() {
     case 'SYSTEM_ADMIN':
       return (
         <AdminDashboard
+          token={token}
           fullName={user.fullName}
           email={user.email}
           onLogout={handleLogout}

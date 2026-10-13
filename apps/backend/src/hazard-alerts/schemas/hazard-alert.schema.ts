@@ -38,6 +38,7 @@ export class HazardAlert {
 
   @Prop({
     required: true,
+    type: String,
     enum: AlertSeverity,
     index: true,
   })
@@ -65,6 +66,7 @@ export class HazardAlert {
 
   @Prop({
     required: true,
+    type: String,
     enum: HazardAlertStatus,
     default: HazardAlertStatus.PUBLISHED,
     index: true,

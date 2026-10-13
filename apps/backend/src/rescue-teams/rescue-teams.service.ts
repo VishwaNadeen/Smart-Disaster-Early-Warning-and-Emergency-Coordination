@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import {
   RescueTeam,
   RescueTeamDocument,
@@ -57,6 +57,26 @@ export class RescueTeamsService {
 
   private escapeRegex(input: string): string {
     return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  // Extract Method: shared active-team lookup.
+  // Removes duplicate lookup and not-found handling from three operations.
+  private async findActiveTeamOrThrow(id: string): Promise<RescueTeamDocument> {
+    const query: FilterQuery<RescueTeamDocument> = {
+      deletedAt: { $exists: false },
+    };
+
+    if (Types.ObjectId.isValid(id)) {
+      query._id = id;
+    } else {
+      query.teamId = new RegExp(`^${this.escapeRegex(id)}$`, 'i');
+    }
+
+    const team = await this.teamModel.findOne(query);
+    if (!team) {
+      throw new NotFoundException(`Rescue team "${id}" not found.`);
+    }
+    return team;
   }
 
   private async generateTeamId(type: RescueTeamType): Promise<string> {
@@ -276,17 +296,8 @@ export class RescueTeamsService {
   ): Promise<{ success: boolean; message: string; data: RescueTeam }> {
     const officer = await this.assertOfficer(userId);
 
-    const query: any = { deletedAt: { $exists: false } };
-    if (Types.ObjectId.isValid(id)) {
-      query._id = id;
-    } else {
-      query.teamId = new RegExp(`^${this.escapeRegex(id)}$`, 'i');
-    }
-
-    const team = await this.teamModel.findOne(query);
-    if (!team) {
-      throw new NotFoundException(`Rescue team "${id}" not found.`);
-    }
+    // Reuse centralized active-team lookup.
+    const team = await this.findActiveTeamOrThrow(id);
 
     if (dto.teamId && dto.teamId.trim() !== team.teamId) {
       const duplicate = await this.teamModel.findOne({
@@ -332,17 +343,8 @@ export class RescueTeamsService {
   ): Promise<{ success: boolean; message: string; data: RescueTeam }> {
     const officer = await this.assertOfficer(userId);
 
-    const query: any = { deletedAt: { $exists: false } };
-    if (Types.ObjectId.isValid(id)) {
-      query._id = id;
-    } else {
-      query.teamId = new RegExp(`^${this.escapeRegex(id)}$`, 'i');
-    }
-
-    const team = await this.teamModel.findOne(query);
-    if (!team) {
-      throw new NotFoundException(`Rescue team "${id}" not found.`);
-    }
+    //  Reuse centralized active-team lookup.
+    const team = await this.findActiveTeamOrThrow(id);
 
     team.status = status;
     if (notes) {
@@ -365,17 +367,8 @@ export class RescueTeamsService {
   ): Promise<{ success: boolean; message: string }> {
     await this.assertOfficer(userId);
 
-    const query: any = { deletedAt: { $exists: false } };
-    if (Types.ObjectId.isValid(id)) {
-      query._id = id;
-    } else {
-      query.teamId = new RegExp(`^${this.escapeRegex(id)}$`, 'i');
-    }
-
-    const team = await this.teamModel.findOne(query);
-    if (!team) {
-      throw new NotFoundException(`Rescue team "${id}" not found.`);
-    }
+  // Reuse centralized active-team lookup.
+    const team = await this.findActiveTeamOrThrow(id);
 
     team.deletedAt = new Date();
     await team.save();
