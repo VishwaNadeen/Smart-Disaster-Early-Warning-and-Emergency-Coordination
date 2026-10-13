@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 
 import { ReportsService } from './reports.service';
+import { ReportsRepository } from './repositories/reports.repository';
 
 import { HazardType, ReportStatus } from './schemas/report.schema';
 
@@ -142,7 +143,7 @@ function makeReport(overrides: Record<string, any> = {}) {
 
     };
 
-    service = new ReportsService(reportModel, userModel);
+    service = new ReportsService(new ReportsRepository(reportModel, userModel));
 
   });
 

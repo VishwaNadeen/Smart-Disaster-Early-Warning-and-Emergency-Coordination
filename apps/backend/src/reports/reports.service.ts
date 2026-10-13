@@ -5,21 +5,19 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Types } from 'mongoose';
 
 import {
-  DisasterReport,
   ReportDocument,
   ReportStatus,
   HazardType,
 } from './schemas/report.schema';
 
 import {
-  User,
   UserDocument,
   UserRole,
 } from '../users/schemas/user.schema';
+import { ReportsRepository } from './repositories/reports.repository';
 
 import { CreateReportDto } from './dto/create-report.dto';
 import { UpdateReportDto } from './dto/update-report.dto';
@@ -48,8 +46,6 @@ const VERIFICATION_DECISIONS: ReportStatus[] = [
   ReportStatus.REJECTED,
   ReportStatus.NEEDS_MORE_INFO,
 ];
-
-const DUPLICATE_DETECTION_RANGE = 0.01;
 
 const STANDARD_DISTRICTS = [
   'Ampara',
@@ -82,11 +78,7 @@ const STANDARD_DISTRICTS = [
 @Injectable()
 export class ReportsService {
   constructor(
-    @InjectModel(DisasterReport.name)
-    private readonly reportModel: Model<ReportDocument>,
-
-    @InjectModel(User.name)
-    private readonly userModel: Model<UserDocument>,
+    private readonly reportsRepository: ReportsRepository,
   ) {}
 
   // ==================================================
@@ -210,7 +202,7 @@ export class ReportsService {
       throw new ForbiddenException('Invalid authenticated user.');
     }
 
-    const user = await this.userModel.findById(userId);
+    const user = await this.reportsRepository.findActiveUser(userId);
 
     if (!user || user.isActive === false) {
       throw new ForbiddenException(
@@ -245,10 +237,7 @@ export class ReportsService {
       throw new BadRequestException('Invalid report ID.');
     }
 
-    const report = await this.reportModel.findOne({
-      _id: reportId,
-      deletedAt: { $exists: false },
-    });
+    const report = await this.reportsRepository.findActiveReport(reportId);
 
     if (!report) {
       throw new NotFoundException('Report not found.');
@@ -313,26 +302,11 @@ export class ReportsService {
       return false;
     }
 
-    const existing = await this.reportModel.findOne({
+    return this.reportsRepository.findPotentialDuplicate({
       hazardType: params.hazardType,
-      status: {
-        $in: [
-          ReportStatus.PENDING_VERIFICATION,
-          ReportStatus.VERIFIED,
-        ],
-      },
-      deletedAt: { $exists: false },
-      latitude: {
-        $gte: latitude - DUPLICATE_DETECTION_RANGE,
-        $lte: latitude + DUPLICATE_DETECTION_RANGE,
-      },
-      longitude: {
-        $gte: longitude - DUPLICATE_DETECTION_RANGE,
-        $lte: longitude + DUPLICATE_DETECTION_RANGE,
-      },
+      latitude,
+      longitude,
     });
-
-    return !!existing;
   }
 
   // ==================================================
@@ -341,14 +315,7 @@ export class ReportsService {
 
   async getDistricts(): Promise<{ success: boolean; data: string[] }> {
     const [reportDistricts, userDistricts, assignedDistricts] =
-      await Promise.all([
-        this.reportModel.distinct('district', {
-          deletedAt: { $exists: false },
-          district: { $exists: true, $ne: '' },
-        }),
-        this.userModel.distinct('district', { isActive: true }),
-        this.userModel.distinct('assignedDistricts', { isActive: true }),
-      ]);
+      await this.reportsRepository.getDistrictSources();
 
     const districtMap = new Map<string, string>();
 
@@ -411,7 +378,7 @@ export class ReportsService {
       file.mimetype.startsWith('image/'),
     );
 
-    const report = await this.reportModel.create({
+    const report = await this.reportsRepository.createReport({
       reportNumber: this.generateReportNumber(),
       citizenId,
       hazardType: dto.hazardType,
@@ -454,13 +421,7 @@ export class ReportsService {
   async findMyReports(citizenId: string) {
     await this.getActiveUser(citizenId);
 
-    const reports = await this.reportModel
-      .find({
-        citizenId,
-        deletedAt: { $exists: false },
-      })
-      .sort({ submittedAt: -1 })
-      .lean();
+    const reports = await this.reportsRepository.findReportsByCitizen(citizenId);
 
     return {
       success: true,
@@ -476,11 +437,7 @@ export class ReportsService {
       throw new BadRequestException('Invalid report ID.');
     }
 
-    const report = await this.reportModel.findOne({
-      _id: reportId,
-      citizenId,
-      deletedAt: { $exists: false },
-    });
+    const report = await this.reportsRepository.findCitizenReport(citizenId, reportId);
 
     if (!report) {
       throw new NotFoundException('Report not found.');
@@ -508,11 +465,7 @@ export class ReportsService {
       throw new BadRequestException('Invalid report ID.');
     }
 
-    const report = await this.reportModel.findOne({
-      _id: reportId,
-      citizenId,
-      deletedAt: { $exists: false },
-    });
+    const report = await this.reportsRepository.findCitizenReport(citizenId, reportId);
 
     if (!report) {
       throw new NotFoundException('Report not found.');
@@ -637,11 +590,7 @@ export class ReportsService {
       throw new BadRequestException('Invalid report ID.');
     }
 
-    const report = await this.reportModel.findOne({
-      _id: reportId,
-      citizenId,
-      deletedAt: { $exists: false },
-    });
+    const report = await this.reportsRepository.findCitizenReport(citizenId, reportId);
 
     if (!report) {
       throw new NotFoundException('Report not found.');
@@ -760,10 +709,7 @@ export class ReportsService {
       });
     }
 
-    const reports = await this.reportModel
-      .find({ $and: conditions })
-      .sort({ submittedAt: -1, createdAt: -1 })
-      .lean();
+    const reports = await this.reportsRepository.findOfficerReports(conditions);
 
     const citizenIds = [
       ...new Set(
@@ -774,10 +720,7 @@ export class ReportsService {
     ];
 
     const citizens = citizenIds.length
-      ? await this.userModel
-          .find({ _id: { $in: citizenIds } })
-          .select('fullName email phone district')
-          .lean()
+      ? await this.reportsRepository.findCitizensByIds(citizenIds)
       : [];
 
     const citizenMap = new Map(
@@ -815,10 +758,9 @@ export class ReportsService {
 
     await this.assertOfficerCanAccessReport(officer, report);
 
-    const citizen = await this.userModel
-      .findById(report.citizenId)
-      .select('fullName email phone district')
-      .lean();
+    const citizen = await this.reportsRepository.findCitizenSummary(
+      String(report.citizenId),
+    );
 
     return {
       success: true,
