@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import '../core/config/api_config.dart';
 
 /// Uses your existing API base URL and JWT token provider.
 /// Provide the same base URL convention used by your ApiService:
@@ -27,7 +28,7 @@ class HelpRequestService {
         ? apiBaseUrl.substring(0, apiBaseUrl.length - 1)
         : apiBaseUrl;
     final response = await _client.get(
-      Uri.parse('$base/users/me'),
+      ApiConfig.uri('/users/me'),
       headers: {
         'Accept': 'application/json',
         'Authorization': 'Bearer $token',
@@ -73,7 +74,7 @@ class HelpRequestService {
     final base = apiBaseUrl.endsWith('/')
         ? apiBaseUrl.substring(0, apiBaseUrl.length - 1)
         : apiBaseUrl;
-    final uri = Uri.parse('$base/help-requests');
+    final uri = ApiConfig.uri('/help-requests');
 
     final response = await _client.post(
       uri,

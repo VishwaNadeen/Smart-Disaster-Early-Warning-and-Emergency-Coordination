@@ -300,24 +300,23 @@ class _CitizenDashboardPageState
       floatingActionButton: FloatingActionButton.extended(
   heroTag: 'citizenHelpMeButton',
   onPressed: () {
-    final tokenStorage = TokenStorage();
+  final tokenStorage = TokenStorage();
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => HelpRequestPage(
-          service: HelpRequestService(
-            apiBaseUrl: ApiConfig.baseUrl,
-            readAccessToken: () => tokenStorage.readToken(),
-          ),
-          loadProfile: () async {
-            // Replace this with your existing profile API call.
-            return <String, dynamic>{};
-          },
-        ),
+  final helpRequestService = HelpRequestService(
+    apiBaseUrl: ApiConfig.baseUrl,
+    readAccessToken: () => tokenStorage.readToken(),
+  );
+
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => HelpRequestPage(
+        service: helpRequestService,
+        loadProfile: helpRequestService.getMyProfile,
       ),
-    );
-  },
+    ),
+  );
+},
   icon: const Icon(Icons.sos_rounded),
   label: const Text('Help Me'),
   backgroundColor: Colors.red,
