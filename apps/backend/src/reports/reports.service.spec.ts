@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 
 import { ReportsService } from './reports.service';
+import { ReportsRepository } from './repositories/reports.repository';
 import { HazardType, ReportStatus } from './schemas/report.schema';
 import { UserRole } from '../users/schemas/user.schema';
 
@@ -62,8 +63,7 @@ describe('ReportsService - create', () => {
     };
 
     service = new ReportsService(
-      reportModel as any,
-      userModel as any,
+      new ReportsRepository(reportModel as any, userModel as any),
     );
   });
 
@@ -187,8 +187,7 @@ describe('ReportsService - retrieval and status', () => {
     };
 
     service = new ReportsService(
-      reportModel,
-      userModel,
+      new ReportsRepository(reportModel, userModel),
     );
   });
 
