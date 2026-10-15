@@ -6,6 +6,7 @@ import {
 } from '@nestjs/mongoose';
 
 import { HydratedDocument } from 'mongoose';
+import { NotificationChannel } from './notification-delivery.schema';
 
 export type HazardAlertDocument =
   HydratedDocument<HazardAlert>;
@@ -37,8 +38,9 @@ export class HazardAlert {
   hazardType: string;
 
   @Prop({
+    type: String,
     required: true,
-    enum: AlertSeverity,
+    enum: Object.values(AlertSeverity),
     index: true,
   })
   severity: AlertSeverity;
@@ -58,14 +60,32 @@ export class HazardAlert {
   affectedCities: string[];
 
   @Prop({
+    type: [String],
+    enum: Object.values(NotificationChannel),
+    default: [
+      NotificationChannel.SMS,
+      NotificationChannel.PUSH,
+      NotificationChannel.WHATSAPP,
+    ],
+  })
+  notificationChannels: NotificationChannel[];
+
+  @Prop({ index: true })
+  sourceReportId?: string;
+
+  @Prop({ trim: true, index: true })
+  sourceReportNumber?: string;
+
+  @Prop({
     required: true,
     index: true,
   })
   publishedBy: string;
 
   @Prop({
+    type: String,
     required: true,
-    enum: HazardAlertStatus,
+    enum: Object.values(HazardAlertStatus),
     default: HazardAlertStatus.PUBLISHED,
     index: true,
   })

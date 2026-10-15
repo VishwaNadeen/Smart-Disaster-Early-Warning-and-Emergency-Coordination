@@ -1,4 +1,3 @@
-
 import {
   Body,
   Controller,
@@ -11,25 +10,28 @@ import {
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-import { HazardAlertsService } from './hazard-alerts.service';
+import type { AuthenticatedRequest } from './authenticated-request';
+
+import { NotificationPreferencesService } from './notification-preferences.service';
 
 import { RegisterDeviceDto } from './dto/register-device.dto';
 
 import { WhatsappConsentDto } from './dto/whatsapp-consent.dto';
 
+/** Lets citizens manage how they receive hazard alerts. */
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationsController {
   constructor(
-    private readonly hazardAlertsService: HazardAlertsService,
+    private readonly preferences: NotificationPreferencesService,
   ) {}
 
   @Post('devices')
   registerDevice(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @Body() dto: RegisterDeviceDto,
   ) {
-    return this.hazardAlertsService.registerDevice(
+    return this.preferences.registerDevice(
       req.user.id,
       dto.token,
     );
@@ -37,10 +39,10 @@ export class NotificationsController {
 
   @Delete('devices')
   unregisterDevice(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @Body() dto: RegisterDeviceDto,
   ) {
-    return this.hazardAlertsService.unregisterDevice(
+    return this.preferences.unregisterDevice(
       req.user.id,
       dto.token,
     );
@@ -48,10 +50,10 @@ export class NotificationsController {
 
   @Put('whatsapp-consent')
   updateWhatsappConsent(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @Body() dto: WhatsappConsentDto,
   ) {
-    return this.hazardAlertsService.updateWhatsappConsent(
+    return this.preferences.updateWhatsappConsent(
       req.user.id,
       dto.optIn,
     );

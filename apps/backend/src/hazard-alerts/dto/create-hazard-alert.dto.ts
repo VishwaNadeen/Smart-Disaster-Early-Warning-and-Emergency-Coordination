@@ -4,6 +4,8 @@ import {
   ArrayMaxSize,
   IsArray,
   IsEnum,
+  IsMongoId,
+  IsOptional,
   IsString,
   MaxLength,
   MinLength,
@@ -11,6 +13,7 @@ import {
 } from 'class-validator';
 
 import { AlertSeverity } from '../schemas/hazard-alert.schema';
+import { NotificationChannel } from '../schemas/notification-delivery.schema';
 
 export class CreateHazardAlertDto {
   @IsString()
@@ -53,4 +56,15 @@ export class CreateHazardAlertDto {
     each: true,
   })
   affectedCities!: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(2)
+  @IsEnum(NotificationChannel, { each: true })
+  notificationChannels?: NotificationChannel[];
+
+  @IsOptional()
+  @IsMongoId()
+  sourceReportId?: string;
 }

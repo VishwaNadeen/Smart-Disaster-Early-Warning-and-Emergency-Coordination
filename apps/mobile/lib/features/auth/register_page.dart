@@ -21,6 +21,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
   final _name = TextEditingController();
   final _email = TextEditingController();
+  final _phone = TextEditingController();
   final _password = TextEditingController();
   final _nic = TextEditingController();
   final _address = TextEditingController();
@@ -61,6 +62,7 @@ class _RegisterPageState extends State<RegisterPage> {
   void dispose() {
     _name.dispose();
     _email.dispose();
+    _phone.dispose();
     _password.dispose();
     _nic.dispose();
     _address.dispose();
@@ -80,6 +82,17 @@ class _RegisterPageState extends State<RegisterPage> {
     if (email.isEmpty || !email.contains('@') ||
         !email.substring(email.indexOf('@') + 1).contains('.')) {
       return 'Enter a valid email address';
+    }
+
+    return null;
+  }
+
+  String? _validatePhone(String? value) {
+    final phone = (value ?? '').replaceAll(RegExp(r'[\s()+-]'), '');
+
+    // Accepts 07XXXXXXXX or 947XXXXXXXX (with or without +).
+    if (!RegExp(r'^(0|94)7\d{8}$').hasMatch(phone)) {
+      return 'Enter a valid mobile number, e.g. 0771234567';
     }
 
     return null;
@@ -109,6 +122,7 @@ class _RegisterPageState extends State<RegisterPage> {
       await AuthService().register(
         name: _name.text.trim(),
         email: _email.text.trim(),
+        phone: _phone.text.trim(),
         password: _password.text,
         nationalId: _nic.text.trim(),
         address: _address.text.trim(),
@@ -231,6 +245,16 @@ class _RegisterPageState extends State<RegisterPage> {
                     keyboardType: TextInputType.emailAddress,
                     prefixIcon: Icons.email_outlined,
                     validator: _validateEmail,
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Mobile number for SMS hazard alerts
+                  AppTextField(
+                    controller: _phone,
+                    label: 'Mobile number (for SMS alerts)',
+                    keyboardType: TextInputType.phone,
+                    prefixIcon: Icons.phone_outlined,
+                    validator: _validatePhone,
                   ),
                   const SizedBox(height: 14),
 

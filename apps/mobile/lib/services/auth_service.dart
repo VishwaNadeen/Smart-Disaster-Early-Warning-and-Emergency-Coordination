@@ -38,6 +38,7 @@ class AuthService {
   Future<void> register({
     required String name,
     required String email,
+    required String phone,
     required String password,
     required String nationalId,
     required String address,
@@ -48,6 +49,7 @@ class AuthService {
       {
         'fullName': name.trim(),
         'email': email.trim(),
+        'phone': phone.trim(),
         'password': password,
         'address': address.trim(),
         'district': district.trim(),

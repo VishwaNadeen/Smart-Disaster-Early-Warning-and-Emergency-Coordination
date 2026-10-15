@@ -16,6 +16,8 @@ import { Roles } from '../common/roles.decorator';
 
 import { CreateHazardAlertDto } from './dto/create-hazard-alert.dto';
 
+import type { AuthenticatedRequest } from './authenticated-request';
+
 import { HazardAlertsService } from './hazard-alerts.service';
 
 import {
@@ -51,7 +53,7 @@ export class HazardAlertsController {
     UserRole.SYSTEM_ADMIN,
   )
   publish(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @Body() dto: CreateHazardAlertDto,
   ) {
     return this.hazardAlertsService.publish(
@@ -63,6 +65,18 @@ export class HazardAlertsController {
   @Get()
   listPublished() {
     return this.hazardAlertsService.listPublished();
+  }
+
+  @Get('history')
+  @UseGuards(RolesGuard)
+  @Roles(
+    UserRole.DUTY_OFFICER,
+    UserRole.DISTRICT_OFFICER,
+    UserRole.ADMIN,
+    UserRole.SYSTEM_ADMIN,
+  )
+  listAll() {
+    return this.hazardAlertsService.listAll();
   }
 
   @Get(':id/deliveries')

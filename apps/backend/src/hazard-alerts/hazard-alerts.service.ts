@@ -1,28 +1,13 @@
-
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-
-import {
-  applicationDefault,
-  getApps,
-  initializeApp,
-} from 'firebase-admin/app';
-
-import { getMessaging } from 'firebase-admin/messaging';
-
-import {
-  User,
-  UserDocument,
-  UserRole,
-} from '../users/schemas/user.schema';
 
 import {
   HazardAlert,
@@ -36,7 +21,40 @@ import {
   NotificationDelivery,
 } from './schemas/notification-delivery.schema';
 
+import {
+  DisasterReport,
+  ReportStatus,
+} from '../reports/schemas/report.schema';
+
 import { CreateHazardAlertDto } from './dto/create-hazard-alert.dto';
+
+import {
+  DEFAULT_NOTIFICATION_CHANNELS,
+  DeliveryRecord,
+  NOTIFICATION_CHANNEL_SENDERS,
+  NotificationChannelSender,
+  AlertRecipient,
+} from './channels/notification-channel.sender';
+
+import { RecipientResolver } from './recipient.resolver';
+
+import {
+  isDuplicateKeyError,
+  safeError,
+} from './utils/error.util';
+
+/** Counters describing the outcome of one dispatch run. */
+export interface DispatchSummary {
+  matchedCitizens: number;
+  pushAttempts: number;
+  whatsappAttempts: number;
+  smsAttempts: number;
+  failedAttempts: number;
+  skippedWithoutEnabledChannel: number;
+  /** True when dispatch itself crashed (the alert is still published). */
+  dispatchError: boolean;
+}
+
 
 @Injectable()
 export class HazardAlertsService {
@@ -44,16 +62,33 @@ export class HazardAlertsService {
     new Logger(HazardAlertsService.name);
 
   constructor(
-    @InjectModel(User.name)
-    private readonly users: Model<UserDocument>,
-
     @InjectModel(HazardAlert.name)
     private readonly alerts: Model<HazardAlertDocument>,
 
     @InjectModel(NotificationDelivery.name)
     private readonly deliveries: Model<NotificationDelivery>,
+
+    @InjectModel(DisasterReport.name)
+    private readonly reports: Model<DisasterReport>,
+
+    private readonly recipientResolver: RecipientResolver,
+
+    @Inject(NOTIFICATION_CHANNEL_SENDERS)
+    private readonly senders: NotificationChannelSender[],
   ) {}
 
+  /**
+   * Validates, stores and dispatches a new hazard alert.
+   *
+   * @param publisherId ID of the officer issuing the alert.
+   * @param dto The alert content, affected areas and optional channels /
+   * verified source report.
+   * @returns The stored alert together with the dispatch summary.
+   * @throws BadRequestException when an area is blank or the source report
+   * is not verified.
+   * @throws NotFoundException when the source report does not exist.
+   * @throws Error when the alert cannot be stored (system error).
+   */
   async publish(
     publisherId: string,
     dto: CreateHazardAlertDto,
@@ -66,22 +101,65 @@ export class HazardAlertsService {
       dto.affectedCities,
     );
 
-    const alert = await this.alerts.create({
-      title: dto.title.trim(),
-      message: dto.message.trim(),
-      safetyInstructions: dto.safetyInstructions.trim(),
-      hazardType: dto.hazardType.trim(),
-      severity: dto.severity,
-      affectedDistricts: districts,
-      affectedCities: cities,
-      publishedBy: publisherId,
-      status: HazardAlertStatus.PUBLISHED,
-      publishedAt: new Date(),
-    });
+    const sourceReportNumber = await this.resolveSourceReportNumber(
+      dto.sourceReportId,
+    );
+
+    const notificationChannels = [
+      ...new Set(
+        dto.notificationChannels?.length
+          ? dto.notificationChannels
+          : DEFAULT_NOTIFICATION_CHANNELS,
+      ),
+    ];
+
+    let alert: HazardAlertDocument;
+
+    try {
+      alert = await this.alerts.create({
+        title: dto.title.trim(),
+        message: dto.message.trim(),
+        safetyInstructions: dto.safetyInstructions.trim(),
+        hazardType: dto.hazardType.trim(),
+        severity: dto.severity,
+        affectedDistricts: districts,
+        affectedCities: cities,
+        notificationChannels,
+        sourceReportId: dto.sourceReportId,
+        sourceReportNumber,
+        publishedBy: publisherId,
+        status: HazardAlertStatus.PUBLISHED,
+        publishedAt: new Date(),
+      });
+    } catch (error: unknown) {
+      this.logger.error(
+        'Failed to store hazard alert',
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw error;
+    }
 
     // Do not fail publication because a notification provider
     // is temporarily unavailable.
-    const dispatch = await this.dispatch(alert);
+    let dispatch: DispatchSummary;
+
+    try {
+      dispatch = await this.dispatch(alert);
+    } catch (error: unknown) {
+      this.logger.error(
+        `Alert ${alert._id} was published, but notification dispatch could not be completed`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      dispatch = {
+        matchedCitizens: 0,
+        pushAttempts: 0,
+        whatsappAttempts: 0,
+        smsAttempts: 0,
+        failedAttempts: 0,
+        skippedWithoutEnabledChannel: 0,
+        dispatchError: true,
+      };
+    }
 
     return {
       success: true,
@@ -93,458 +171,76 @@ export class HazardAlertsService {
     };
   }
 
-  async dispatch(alert: HazardAlertDocument) {
-    const recipients = await this.users
-      .find({
-        role: UserRole.CITIZEN,
-        isActive: true,
-        deletedAt: { $exists: false },
-        $expr: {
-          $and: [
-            {
-              $in: [
-                {
-                  $toLower: {
-                    $trim: {
-                      input: {
-                        $ifNull: ['$district', ''],
-                      },
-                    },
-                  },
-                },
-                alert.affectedDistricts.map((x) =>
-                  x.toLowerCase(),
-                ),
-              ],
-            },
-            {
-              $in: [
-                {
-                  $toLower: {
-                    $trim: {
-                      input: {
-                        $ifNull: ['$livingCity', ''],
-                      },
-                    },
-                  },
-                },
-                alert.affectedCities.map((x) =>
-                  x.toLowerCase(),
-                ),
-              ],
-            },
-          ],
-        },
-      })
-      .select(
-        '_id phone fcmTokens whatsappOptIn',
-      )
-      .lean()
-      .exec();
+  /**
+   * Sends a published alert to every matching citizen through each
+   * requested channel they can be reached on. Existing delivery records are
+   * reused, so re-dispatching never notifies a citizen twice on a channel.
+   *
+   * @param alert The published alert.
+   * @returns Per-channel attempt counts, failures and skipped citizens.
+   * @throws Error when recipients or delivery records cannot be read or
+   * stored (system error); provider failures are NOT thrown.
+   */
+  async dispatch(
+    alert: HazardAlertDocument,
+  ): Promise<DispatchSummary> {
+    const recipients =
+      await this.recipientResolver.findCitizensForAlert(alert);
 
-    let pushQueued = 0;
-    let whatsappQueued = 0;
+    const activeSenders = this.sendersForAlert(alert);
+
+    const attempts: Record<NotificationChannel, number> = {
+      [NotificationChannel.PUSH]: 0,
+      [NotificationChannel.WHATSAPP]: 0,
+      [NotificationChannel.SMS]: 0,
+    };
+
+    let failedAttempts = 0;
     let skipped = 0;
 
     for (const recipient of recipients) {
-      const recipientId = String(recipient._id);
+      const reachableVia = activeSenders.filter((sender) =>
+        sender.canReach(recipient),
+      );
 
-      const channels: NotificationChannel[] = [];
-
-      if (
-        Array.isArray(recipient.fcmTokens) &&
-        recipient.fcmTokens.length > 0
-      ) {
-        channels.push(NotificationChannel.PUSH);
-      }
-
-      if (
-        recipient.whatsappOptIn === true &&
-        recipient.phone
-      ) {
-        channels.push(NotificationChannel.WHATSAPP);
-      }
-
-      if (channels.length === 0) {
+      if (reachableVia.length === 0) {
         skipped++;
         continue;
       }
 
-      for (const channel of channels) {
-        // The unique index prevents duplicate deliveries when
-        // a request is retried or the same alert is dispatched again.
-        let delivery;
+      for (const sender of reachableVia) {
+        const delivery = await this.attemptDelivery(
+          alert,
+          recipient,
+          sender,
+        );
 
-        try {
-          delivery = await this.deliveries.findOneAndUpdate(
-            {
-              alertId: String(alert._id),
-              recipientId,
-              channel,
-            },
-            {
-              $setOnInsert: {
-                alertId: String(alert._id),
-                recipientId,
-                channel,
-                status: DeliveryStatus.PENDING,
-              },
-            },
-            {
-              upsert: true,
-              new: true,
-              setDefaultsOnInsert: true,
-            },
-          );
-        } catch (error: any) {
-          if (error?.code === 11000) {
-            continue;
-          }
-
-          throw error;
-        }
-
-        // Do not send again when a previous attempt was accepted
-        // or confirmed delivered by the provider.
-        if (
-          delivery.status === DeliveryStatus.SENT ||
-          delivery.status === DeliveryStatus.DELIVERED
-        ) {
+        if (!delivery) {
           continue;
         }
 
-        if (channel === NotificationChannel.PUSH) {
-          await this.sendPush(
-            alert,
-            recipient.fcmTokens || [],
-            delivery,
-          );
+        attempts[sender.channel]++;
 
-          pushQueued++;
-        } else {
-          await this.sendWhatsApp(
-            alert,
-            recipient.phone!,
-            delivery,
-          );
-
-          whatsappQueued++;
+        if (delivery.status === DeliveryStatus.FAILED) {
+          failedAttempts++;
         }
       }
     }
 
     return {
       matchedCitizens: recipients.length,
-      pushAttempts: pushQueued,
-      whatsappAttempts: whatsappQueued,
+      pushAttempts: attempts[NotificationChannel.PUSH],
+      whatsappAttempts: attempts[NotificationChannel.WHATSAPP],
+      smsAttempts: attempts[NotificationChannel.SMS],
+      failedAttempts,
       skippedWithoutEnabledChannel: skipped,
+      dispatchError: false,
     };
   }
 
-  private async sendPush(
-    alert: HazardAlertDocument,
-    tokens: string[],
-    delivery: any,
-  ) {
-    try {
-      if (!process.env.FIREBASE_PROJECT_ID) {
-        throw new Error(
-          'FIREBASE_PROJECT_ID is not configured',
-        );
-      }
-
-      if (getApps().length === 0) {
-        initializeApp({
-          credential: applicationDefault(),
-          projectId: process.env.FIREBASE_PROJECT_ID,
-        });
-      }
-
-      const result = await getMessaging().sendEachForMulticast({
-        tokens,
-        notification: {
-          title: `[${alert.severity}] ${alert.title}`,
-          body: alert.message,
-        },
-        data: {
-          alertId: String(alert._id),
-          hazardType: alert.hazardType,
-          severity: alert.severity,
-          affectedDistricts: alert.affectedDistricts.join(','),
-          affectedCities: alert.affectedCities.join(','),
-          safetyInstructions: alert.safetyInstructions,
-        },
-        android: {
-          priority: 'high',
-          notification: {
-            channelId: 'hazard_alerts',
-            sound: 'default',
-          },
-        },
-        apns: {
-          payload: {
-            aps: {
-              sound: 'default',
-            },
-          },
-        },
-      });
-
-      const successful = result.responses
-        .filter((response) => response.success)
-        .length;
-
-      if (successful > 0) {
-        delivery.status = DeliveryStatus.SENT;
-        delivery.sentAt = new Date();
-      } else {
-        delivery.status = DeliveryStatus.FAILED;
-        delivery.failureReason =
-          'Firebase rejected all registered device tokens';
-      }
-
-      await delivery.save();
-
-      // Remove tokens known to be permanently invalid.
-      const invalidTokens = result.responses
-        .map((response, index) => ({
-          response,
-          token: tokens[index],
-        }))
-        .filter(({ response }) => {
-          const code = response.error?.code;
-
-          return (
-            code === 'messaging/registration-token-not-registered' ||
-            code === 'messaging/invalid-registration-token'
-          );
-        })
-        .map(({ token }) => token);
-
-      if (invalidTokens.length > 0) {
-        await this.users.updateMany(
-          {},
-          {
-            $pull: {
-              fcmTokens: { $in: invalidTokens },
-            },
-          },
-        );
-      }
-    } catch (error: any) {
-      delivery.status = DeliveryStatus.FAILED;
-      delivery.failureReason = this.safeError(error);
-      await delivery.save();
-
-      this.logger.warn(
-        `Push delivery failed for alert ${alert._id}`,
-      );
-    }
-  }
-
-  private async sendWhatsApp(
-    alert: HazardAlertDocument,
-    phone: string,
-    delivery: any,
-  ) {
-    try {
-      const accessToken =
-        process.env.WHATSAPP_ACCESS_TOKEN;
-
-      const phoneNumberId =
-        process.env.WHATSAPP_PHONE_NUMBER_ID;
-
-      const version =
-        process.env.WHATSAPP_API_VERSION;
-
-      const templateName =
-        process.env.WHATSAPP_TEMPLATE_NAME;
-
-      const language =
-        process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'en';
-
-      if (
-        !accessToken ||
-        !phoneNumberId ||
-        !version ||
-        !templateName
-      ) {
-        throw new Error(
-          'WhatsApp Cloud API configuration is incomplete',
-        );
-      }
-
-      const response = await fetch(
-        `https://graph.facebook.com/${version}/${phoneNumberId}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
-            to: this.normalizePhone(phone),
-            type: 'template',
-            template: {
-              name: templateName,
-              language: {
-                code: language,
-              },
-              components: [
-                {
-                  type: 'body',
-                  parameters: [
-                    {
-                      type: 'text',
-                      text: alert.title,
-                    },
-                    {
-                      type: 'text',
-                      text: alert.hazardType,
-                    },
-                    {
-                      type: 'text',
-                      text: alert.severity,
-                    },
-                    {
-                      type: 'text',
-                      text: alert.affectedDistricts.join(', '),
-                    },
-                    {
-                      type: 'text',
-                      text: alert.affectedCities.join(', '),
-                    },
-                    {
-                      type: 'text',
-                      text: alert.safetyInstructions,
-                    },
-                  ],
-                },
-              ],
-            },
-          }),
-          signal: AbortSignal.timeout(15000),
-        },
-      );
-
-      const result = await response.json() as any;
-
-      if (!response.ok) {
-        throw new Error(
-          result?.error?.message ||
-            `WhatsApp API returned HTTP ${response.status}`,
-        );
-      }
-
-      delivery.status = DeliveryStatus.SENT;
-      delivery.sentAt = new Date();
-      delivery.providerMessageId =
-        result?.messages?.[0]?.id;
-
-      await delivery.save();
-    } catch (error: any) {
-      delivery.status = DeliveryStatus.FAILED;
-      delivery.failureReason = this.safeError(error);
-
-      await delivery.save();
-
-      this.logger.warn(
-        `WhatsApp delivery failed for alert ${alert._id}`,
-      );
-    }
-  }
-
-  async registerDevice(
-    userId: string,
-    token: string,
-  ) {
-    const cleanToken = token.trim();
-
-    if (!cleanToken) {
-      throw new BadRequestException(
-        'Device token is required',
-      );
-    }
-
-    const user = await this.users.findByIdAndUpdate(
-      userId,
-      {
-        $addToSet: {
-          fcmTokens: cleanToken,
-        },
-      },
-      {
-        new: true,
-      },
-    );
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    return {
-      success: true,
-      message: 'Device registered successfully',
-    };
-  }
-
-  async unregisterDevice(
-    userId: string,
-    token: string,
-  ) {
-    const user = await this.users.findByIdAndUpdate(
-      userId,
-      {
-        $pull: {
-          fcmTokens: token.trim(),
-        },
-      },
-      {
-        new: true,
-      },
-    );
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    return {
-      success: true,
-      message: 'Device unregistered successfully',
-    };
-  }
-
-  async updateWhatsappConsent(
-    userId: string,
-    optIn: boolean,
-  ) {
-    const user = await this.users.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          whatsappOptIn: optIn,
-          whatsappOptInAt: optIn
-            ? new Date()
-            : undefined,
-        },
-      },
-      {
-        new: true,
-      },
-    );
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    return {
-      success: true,
-      whatsappOptIn: user.whatsappOptIn,
-    };
-  }
-
+  /**
+   * Lists published (not cancelled) alerts, newest first, for citizens.
+   */
   async listPublished() {
     const data = await this.alerts
       .find({
@@ -560,6 +256,29 @@ export class HazardAlertsService {
     };
   }
 
+  /**
+   * Lists every alert, including cancelled ones, newest first, for the
+   * officer alert history.
+   */
+  async listAll() {
+    const data = await this.alerts
+      .find({})
+      .sort({ publishedAt: -1 })
+      .lean()
+      .exec();
+
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  /**
+   * Returns a single published alert.
+   *
+   * @param id The alert ID.
+   * @throws NotFoundException when the alert is missing or not published.
+   */
   async getPublishedById(id: string) {
     const alert = await this.alerts
       .findOne({
@@ -581,6 +300,13 @@ export class HazardAlertsService {
     };
   }
 
+  /**
+   * Returns the per-recipient delivery records of an alert plus an
+   * aggregated count per channel and status.
+   *
+   * @param alertId The alert ID.
+   * @throws NotFoundException when the alert does not exist.
+   */
   async listDeliveries(alertId: string) {
     const alert = await this.alerts.findById(alertId);
 
@@ -621,6 +347,13 @@ export class HazardAlertsService {
     };
   }
 
+  /**
+   * Cancels an alert. Cancelling an already cancelled alert is a no-op.
+   *
+   * @param alertId The alert ID.
+   * @param reason Why the alert is withdrawn (surrounding spaces ignored).
+   * @throws NotFoundException when the alert does not exist.
+   */
   async cancelAlert(
     alertId: string,
     reason: string,
@@ -650,7 +383,146 @@ export class HazardAlertsService {
     };
   }
 
-  private normalizeAreas(values: string[]) {
+  /**
+   * Looks up the verified incident report an alert is based on.
+   *
+   * @returns The report number, or undefined when no report is linked.
+   */
+  private async resolveSourceReportNumber(
+    sourceReportId?: string,
+  ): Promise<string | undefined> {
+    if (!sourceReportId) {
+      return undefined;
+    }
+
+    const sourceReport = await this.reports
+      .findById(sourceReportId)
+      .lean()
+      .exec();
+
+    if (!sourceReport) {
+      throw new NotFoundException(
+        'Source incident report not found',
+      );
+    }
+
+    if (sourceReport.status !== ReportStatus.VERIFIED) {
+      throw new BadRequestException(
+        'Only a verified incident report can be used to create an alert',
+      );
+    }
+
+    return sourceReport.reportNumber;
+  }
+
+  /** Selects the registered senders for the channels the alert requests. */
+  private sendersForAlert(
+    alert: HazardAlertDocument,
+  ): NotificationChannelSender[] {
+    const requestedChannels = alert.notificationChannels?.length
+      ? alert.notificationChannels
+      : DEFAULT_NOTIFICATION_CHANNELS;
+
+    return this.senders.filter((sender) =>
+      requestedChannels.includes(sender.channel),
+    );
+  }
+
+  /**
+   * Creates (or finds) the unique delivery record for the alert, recipient
+   * and channel and, unless it was already handled, sends through the
+   * channel.
+   *
+   * @returns The delivery that was attempted, or null when it was skipped
+   * (duplicate created concurrently, or already SENT / DELIVERED).
+   */
+  private async attemptDelivery(
+    alert: HazardAlertDocument,
+    recipient: AlertRecipient,
+    sender: NotificationChannelSender,
+  ): Promise<DeliveryRecord | null> {
+    const delivery = await this.findOrCreateDelivery(
+      String(alert._id),
+      String(recipient._id),
+      sender.channel,
+    );
+
+    // Do not send again when a previous attempt was accepted
+    // or confirmed delivered by the provider.
+    if (
+      !delivery ||
+      delivery.status === DeliveryStatus.SENT ||
+      delivery.status === DeliveryStatus.DELIVERED
+    ) {
+      return null;
+    }
+
+    try {
+      await sender.send(alert, recipient, delivery);
+    } catch (error: unknown) {
+      // Senders record provider errors themselves; this guards against a
+      // sender breaking its contract so the run can continue.
+      this.logger.error(
+        `${sender.channel} sender failed unexpectedly for alert ${alert._id}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      delivery.status = DeliveryStatus.FAILED;
+      delivery.failureReason = safeError(error);
+      await delivery.save();
+    }
+
+    return delivery;
+  }
+
+  /**
+   * The unique index prevents duplicate deliveries when a request is
+   * retried or the same alert is dispatched again.
+   *
+   * @returns The delivery record, or null when a concurrent run created it
+   * first (duplicate key).
+   */
+  private async findOrCreateDelivery(
+    alertId: string,
+    recipientId: string,
+    channel: NotificationChannel,
+  ): Promise<DeliveryRecord | null> {
+    try {
+      return await this.deliveries.findOneAndUpdate(
+        {
+          alertId,
+          recipientId,
+          channel,
+        },
+        {
+          $setOnInsert: {
+            alertId,
+            recipientId,
+            channel,
+            status: DeliveryStatus.PENDING,
+          },
+        },
+        {
+          upsert: true,
+          new: true,
+          setDefaultsOnInsert: true,
+        },
+      );
+    } catch (error: unknown) {
+      if (isDuplicateKeyError(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Trims, collapses inner whitespace and de-duplicates district / city
+   * names.
+   *
+   * @throws BadRequestException when any value is blank.
+   */
+  private normalizeAreas(values: string[]): string[] {
     const normalized = [
       ...new Set(
         values.map((value) =>
@@ -666,29 +538,5 @@ export class HazardAlertsService {
     }
 
     return normalized;
-  }
-
-  private normalizePhone(phone: string) {
-    // Store WhatsApp numbers in international format,
-    // digits only, without a leading "+".
-    const normalized = phone.replace(/[\s()+.-]/g, '');
-
-    if (!/^\d{8,15}$/.test(normalized)) {
-      throw new BadRequestException(
-        'Recipient phone number must be in international format',
-      );
-    }
-
-    return normalized;
-  }
-
-  private safeError(error: unknown) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : 'Unknown provider error';
-
-    // Do not store access tokens or authorization headers.
-    return message.slice(0, 500);
   }
 }

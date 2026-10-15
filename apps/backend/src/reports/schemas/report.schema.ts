@@ -66,8 +66,9 @@ export class DisasterReport {
 
   // Hazard category.
   @Prop({
+    type: String,
     required: true,
-    enum: HazardType,
+    enum: Object.values(HazardType),
   })
   hazardType: HazardType;
 
@@ -138,7 +139,7 @@ export class DisasterReport {
   // Verification workflow status.
   @Prop({
     type: String,
-    enum: ReportStatus,
+    enum: Object.values(ReportStatus),
     default: ReportStatus.PENDING_VERIFICATION,
     index: true,
   })

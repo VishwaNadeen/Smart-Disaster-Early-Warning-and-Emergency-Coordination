@@ -13,6 +13,7 @@ export type NotificationDeliveryDocument =
 export enum NotificationChannel {
   PUSH = 'PUSH',
   WHATSAPP = 'WHATSAPP',
+  SMS = 'SMS',
 }
 
 export enum DeliveryStatus {
@@ -31,14 +32,16 @@ export class NotificationDelivery {
   recipientId: string;
 
   @Prop({
+    type: String,
     required: true,
-    enum: NotificationChannel,
+    enum: Object.values(NotificationChannel),
   })
   channel: NotificationChannel;
 
   @Prop({
+    type: String,
     required: true,
-    enum: DeliveryStatus,
+    enum: Object.values(DeliveryStatus),
     default: DeliveryStatus.PENDING,
     index: true,
   })

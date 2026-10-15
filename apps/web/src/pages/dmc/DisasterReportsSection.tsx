@@ -1,31 +1,14 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
-import {
-  AlertTriangle,
-  Calendar,
-  Check,
-  CheckCircle2,
-  Clock,
-  Eye,
-  FileText,
-  Flame,
-  Globe,
-  Info,
-  MapPin,
-  Maximize2,
-  Plus,
-  RefreshCw,
-  Search,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-  User,
-  Waves,
-  Wind,
-  X,
-  XCircle,
-} from 'lucide-react'
+import { MapContainer, Marker, TileLayer } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import { Megaphone, Plus, RefreshCw, Search, X } from 'lucide-react'
+import CreateIncidentModal from './CreateIncidentModal'
+import DropdownSelect from './DropdownSelect'
+import { SRI_LANKA_DISTRICTS } from './sriLankaDistricts'
 
 const API_URL = 'http://localhost:3000/api'
+const FILE_BASE_URL = 'http://localhost:3000'
 
 export interface DisasterReportItem {
   _id: string
@@ -58,51 +41,75 @@ interface DisasterReportsSectionProps {
   assignedDistricts?: string[]
   role?: string
   onPendingCountChange?: (count: number) => void
+  onIssueAlertFromReport?: (report: DisasterReportItem) => void
 }
 
-const HAZARD_LABELS: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  FLOOD: { label: 'Flood', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
-  RISING_WATER: { label: 'Rising Water', color: 'text-sky-700', bg: 'bg-sky-50', border: 'border-sky-200' },
-  LANDSLIDE: { label: 'Landslide', color: 'text-amber-800', bg: 'bg-amber-50', border: 'border-amber-200' },
-  LANDSLIDE_CRACK: { label: 'Landslide Crack', color: 'text-orange-800', bg: 'bg-orange-50', border: 'border-orange-200' },
-  BLOCKED_ROAD: { label: 'Blocked Road', color: 'text-yellow-800', bg: 'bg-yellow-50', border: 'border-yellow-200' },
-  STRONG_WIND: { label: 'Strong Wind', color: 'text-teal-700', bg: 'bg-teal-50', border: 'border-teal-200' },
-  FIRE: { label: 'Fire', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
-  EARTHQUAKE: { label: 'Earthquake', color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
-  OTHER: { label: 'Other Hazard', color: 'text-slate-700', bg: 'bg-slate-100', border: 'border-slate-200' },
+type ReviewDecision = 'VERIFIED' | 'NEEDS_MORE_INFO' | 'REJECTED'
+
+const HAZARD_LABELS: Record<string, string> = {
+  FLOOD: 'Flood',
+  RISING_WATER: 'Rising water',
+  LANDSLIDE: 'Landslide',
+  LANDSLIDE_CRACK: 'Landslide crack',
+  BLOCKED_ROAD: 'Blocked road',
+  STRONG_WIND: 'Strong wind',
+  FIRE: 'Fire',
+  EARTHQUAKE: 'Earthquake',
+  OTHER: 'Other',
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  PENDING_VERIFICATION: {
-    label: 'Pending Verification',
-    color: 'text-amber-700',
-    bg: 'bg-amber-50 border-amber-200',
-    dot: 'bg-amber-500',
-  },
-  VERIFIED: {
-    label: 'Verified',
-    color: 'text-emerald-700',
-    bg: 'bg-emerald-50 border-emerald-200',
-    dot: 'bg-emerald-500',
-  },
-  NEEDS_MORE_INFO: {
-    label: 'Needs More Info',
-    color: 'text-sky-700',
-    bg: 'bg-sky-50 border-sky-200',
-    dot: 'bg-sky-500',
-  },
-  REJECTED: {
-    label: 'Rejected',
-    color: 'text-rose-700',
-    bg: 'bg-rose-50 border-rose-200',
-    dot: 'bg-rose-500',
-  },
-  DRAFT: {
-    label: 'Draft',
-    color: 'text-slate-600',
-    bg: 'bg-slate-100 border-slate-200',
-    dot: 'bg-slate-400',
-  },
+const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
+  PENDING_VERIFICATION: { label: 'Pending', badge: 'bg-amber-100 text-amber-800' },
+  VERIFIED: { label: 'Verified', badge: 'bg-emerald-100 text-emerald-800' },
+  NEEDS_MORE_INFO: { label: 'Needs info', badge: 'bg-sky-100 text-sky-800' },
+  REJECTED: { label: 'Rejected', badge: 'bg-rose-100 text-rose-800' },
+  DRAFT: { label: 'Draft', badge: 'bg-slate-100 text-slate-600' },
+  PENDING_SYNC: { label: 'Pending sync', badge: 'bg-slate-100 text-slate-600' },
+}
+
+const STATUS_TABS = [
+  { id: 'ALL', label: 'All' },
+  { id: 'PENDING_VERIFICATION', label: 'Pending' },
+  { id: 'VERIFIED', label: 'Verified' },
+  { id: 'NEEDS_MORE_INFO', label: 'Needs info' },
+  { id: 'REJECTED', label: 'Rejected' },
+]
+
+const DECISIONS: { value: ReviewDecision; label: string; selected: string }[] = [
+  { value: 'VERIFIED', label: 'Verify', selected: 'border-emerald-500 bg-emerald-50 text-emerald-800' },
+  { value: 'NEEDS_MORE_INFO', label: 'Needs more info', selected: 'border-sky-500 bg-sky-50 text-sky-800' },
+  { value: 'REJECTED', label: 'Reject', selected: 'border-rose-500 bg-rose-50 text-rose-800' },
+]
+
+const incidentIcon = L.divIcon({
+  className: '',
+  html: '<div style="width:20px;height:20px;border-radius:50%;background:#dc2626;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)"></div>',
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
+})
+
+const photoSrc = (url: string) => (url.startsWith('http') ? url : `${FILE_BASE_URL}${url}`)
+const reportKey = (report: DisasterReportItem) => report._id || report.id || report.reportNumber
+const hazardLabel = (report: DisasterReportItem) =>
+  report.hazardType === 'OTHER' && report.customHazardType
+    ? report.customHazardType
+    : HAZARD_LABELS[report.hazardType] || report.hazardType
+
+function locationText(report: DisasterReportItem) {
+  return [report.manualLocation, report.city, report.district].filter(Boolean).join(', ') || 'Location not provided'
+}
+
+function formatDate(value?: string) {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
+}
+
+function getCoordinates(report: DisasterReportItem): [number, number] | null {
+  if (report.latitude == null || report.longitude == null) return null
+  const latitude = Number(report.latitude)
+  const longitude = Number(report.longitude)
+  return Number.isFinite(latitude) && Number.isFinite(longitude) ? [latitude, longitude] : null
 }
 
 export default function DisasterReportsSection({
@@ -110,1035 +117,518 @@ export default function DisasterReportsSection({
   registeredDistrict,
   assignedDistricts,
   onPendingCountChange,
+  onIssueAlertFromReport,
 }: DisasterReportsSectionProps) {
-  // Districts dynamically fetched from backend API
-  const [districtsList, setDistrictsList] = useState<string[]>([])
-  const [isLoadingDistricts, setIsLoadingDistricts] = useState(false)
+  const authHeaders = useMemo(
+    () => ({ Authorization: `Bearer ${token}`, Accept: 'application/json' }),
+    [token],
+  )
 
-  // Combined dynamic districts list (Islandwide districts from backend + any officer assignments)
+  const [districtsList, setDistrictsList] = useState<string[]>([])
   const allDistricts = useMemo(() => {
-    const combined = new Set<string>()
+    const combined = new Set<string>(Object.keys(SRI_LANKA_DISTRICTS))
     if (registeredDistrict) combined.add(registeredDistrict)
-    if (assignedDistricts) {
-      assignedDistricts.forEach((d) => d && combined.add(d))
-    }
+    assignedDistricts?.forEach((d) => d && combined.add(d))
     districtsList.forEach((d) => d && combined.add(d))
     return Array.from(combined).sort((a, b) => a.localeCompare(b))
   }, [districtsList, registeredDistrict, assignedDistricts])
 
-  // Active district being viewed (can be 'ALL' for islandwide, or a specific district)
-  const [selectedDistrict, setSelectedDistrict] = useState<string>(
-    registeredDistrict || 'ALL',
-  )
+  const [selectedDistrict, setSelectedDistrict] = useState(registeredDistrict || 'ALL')
+  const [selectedStatus, setSelectedStatus] = useState('ALL')
+  const [selectedHazard, setSelectedHazard] = useState('ALL')
+  const [searchTerm, setSearchTerm] = useState('')
 
-  // Reports state from backend
   const [reports, setReports] = useState<DisasterReportItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedHazard, setSelectedHazard] = useState('ALL')
-  const [selectedStatus, setSelectedStatus] = useState('ALL')
 
-  // Modals state
   const [activeReport, setActiveReport] = useState<DisasterReportItem | null>(null)
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
-  const [verificationNotes, setVerificationNotes] = useState('')
+  const [decision, setDecision] = useState<ReviewDecision>('VERIFIED')
+  const [notes, setNotes] = useState('')
   const [rejectionReason, setRejectionReason] = useState('')
-  const [selectedVerificationStatus, setSelectedVerificationStatus] = useState<
-    'VERIFIED' | 'REJECTED' | 'NEEDS_MORE_INFO'
-  >('VERIFIED')
+  const [reviewError, setReviewError] = useState('')
+  const [reviewNotice, setReviewNotice] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
-
-  // 1. Fetch districts list dynamically from backend
-  const fetchDistrictsFromBackend = useCallback(async () => {
-    setIsLoadingDistricts(true)
-    try {
-      const res = await fetch(`${API_URL}/reports/districts`, {
-        headers: {
-          Accept: 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      })
-      const result = await res.json().catch(() => null)
-      if (res.ok && Array.isArray(result?.data)) {
-        setDistrictsList(result.data)
-      }
-    } catch {
-      // Backend districts call fallback
-    } finally {
-      setIsLoadingDistricts(false)
-    }
-  }, [token])
+  const [showCreateModal, setShowCreateModal] = useState(false)
 
   useEffect(() => {
-    void fetchDistrictsFromBackend()
-  }, [fetchDistrictsFromBackend])
+    void (async () => {
+      try {
+        const res = await fetch(`${API_URL}/reports/districts`, { headers: authHeaders })
+        const result = await res.json().catch(() => null)
+        if (res.ok && Array.isArray(result?.data)) setDistrictsList(result.data)
+      } catch {
+        // The built-in district list is used when the backend list is unavailable.
+      }
+    })()
+  }, [authHeaders])
 
-  // 2. Fetch reports dynamically from backend API (no hardcoded data)
   const fetchReports = useCallback(
     async (district: string) => {
       setIsLoading(true)
       setError('')
-
       try {
         const url = new URL(`${API_URL}/reports`)
-        // If a specific district is selected (not 'ALL'), pass it to the backend
-        if (district && district !== 'ALL') {
-          url.searchParams.set('district', district)
-        }
-
-        const res = await fetch(url.toString(), {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/json',
-          },
-        })
-
+        if (district !== 'ALL') url.searchParams.set('district', district)
+        const res = await fetch(url.toString(), { headers: authHeaders })
         const data = await res.json().catch(() => null)
-
-        if (!res.ok) {
-          throw new Error(
-            data?.message || `Failed to load reports from backend (HTTP ${res.status})`,
-          )
-        }
-
+        if (!res.ok) throw new Error(data?.message || `Failed to load reports (HTTP ${res.status})`)
         const list: DisasterReportItem[] = Array.isArray(data?.data)
           ? data.data
           : Array.isArray(data)
             ? data
             : []
-
         setReports(list)
-
-        // Notify parent about pending count
-        const pendingCount = list.filter(
-          (r) => r.status === 'PENDING_VERIFICATION',
-        ).length
-        if (onPendingCountChange) {
-          onPendingCountChange(pendingCount)
-        }
+        onPendingCountChange?.(list.filter((r) => r.status === 'PENDING_VERIFICATION').length)
       } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'Could not fetch disaster reports from backend API.',
-        )
+        setError(err instanceof Error ? err.message : 'Could not load disaster reports.')
       } finally {
         setIsLoading(false)
       }
     },
-    [token, onPendingCountChange],
+    [authHeaders, onPendingCountChange],
   )
 
   useEffect(() => {
     void fetchReports(selectedDistrict)
+    const timer = window.setInterval(() => void fetchReports(selectedDistrict), 15000)
+    return () => window.clearInterval(timer)
   }, [fetchReports, selectedDistrict])
 
-  // Handle Quick Verify directly from row
-  async function handleQuickVerify(report: DisasterReportItem) {
-    const reportId = report._id || report.id
-    if (!reportId) return
-
-    try {
-      setIsUpdatingStatus(true)
-      const res = await fetch(`${API_URL}/reports/${reportId}/status`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          status: 'VERIFIED',
-          officerNotes: `Verified by Duty Officer on ${new Date().toLocaleDateString()}`,
-        }),
-      })
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => null)
-        throw new Error(errorData?.message || 'Verification failed')
-      }
-
-      // Re-fetch reports from backend to ensure real database state
-      void fetchReports(selectedDistrict)
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to verify report')
-    } finally {
-      setIsUpdatingStatus(false)
-    }
-  }
-
-  // Handle Full Verification Submission in Modal
-  async function handleSubmitVerification(e: FormEvent) {
-    e.preventDefault()
-    if (!activeReport) return
-
-    const reportId = activeReport._id || activeReport.id
-    if (!reportId) return
-
-    try {
-      setIsUpdatingStatus(true)
-      const res = await fetch(`${API_URL}/reports/${reportId}/status`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          status: selectedVerificationStatus,
-          officerNotes: verificationNotes.trim() || undefined,
-          rejectionReason:
-            selectedVerificationStatus === 'REJECTED'
-              ? rejectionReason.trim() || 'Declined upon verification'
-              : undefined,
-        }),
-      })
-
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        throw new Error(data?.message || 'Could not update verification status')
-      }
-
-      setActiveReport(null)
-      setVerificationNotes('')
-      setRejectionReason('')
-
-      // Re-fetch reports from backend
-      void fetchReports(selectedDistrict)
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error updating status')
-    } finally {
-      setIsUpdatingStatus(false)
-    }
-  }
-
-  // Open verification modal for a report
-  function openReportModal(report: DisasterReportItem) {
+  const openReview = (report: DisasterReportItem) => {
     setActiveReport(report)
-    setSelectedVerificationStatus(
-      report.status === 'VERIFIED'
-        ? 'VERIFIED'
-        : report.status === 'REJECTED'
-          ? 'REJECTED'
-          : 'VERIFIED',
-    )
-    setVerificationNotes(report.officerNotes || '')
+    setDecision(report.status === 'REJECTED' || report.status === 'NEEDS_MORE_INFO' ? report.status : 'VERIFIED')
+    setNotes(report.officerNotes || '')
     setRejectionReason(report.rejectionReason || '')
+    setReviewError('')
+    setReviewNotice('')
   }
 
-  // Filtered reports in memory by status, hazard, and search query
+  const saveDecision = async (report: DisasterReportItem, status: ReviewDecision) => {
+    const res = await fetch(`${API_URL}/reports/${reportKey(report)}/status`, {
+      method: 'PATCH',
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status,
+        officerNotes: notes.trim() || undefined,
+        rejectionReason: status === 'REJECTED' ? rejectionReason.trim() : undefined,
+      }),
+    })
+    const data = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(data?.message || 'Could not update verification status')
+  }
+
+  const handleSubmitReview = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!activeReport || activeReport.status !== 'PENDING_VERIFICATION') return
+    if (decision === 'REJECTED' && !rejectionReason.trim()) {
+      setReviewError('Enter a rejection reason.')
+      return
+    }
+
+    try {
+      setIsSaving(true)
+      setReviewError('')
+      await saveDecision(activeReport, decision)
+      const updated: DisasterReportItem = {
+        ...activeReport,
+        status: decision,
+        officerNotes: notes.trim() || undefined,
+        rejectionReason: decision === 'REJECTED' ? rejectionReason.trim() : undefined,
+      }
+      setActiveReport(updated)
+      setReviewNotice(
+        decision === 'VERIFIED'
+          ? 'Report verified. You can now issue an alert for this area.'
+          : 'Decision saved.',
+      )
+      void fetchReports(selectedDistrict)
+    } catch (err) {
+      setReviewError(err instanceof Error ? err.message : 'Error updating status')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const issueAlert = (report: DisasterReportItem) => {
+    setActiveReport(null)
+    onIssueAlertFromReport?.(report)
+  }
+
   const filteredReports = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase()
     return reports.filter((item) => {
-      if (selectedStatus !== 'ALL' && item.status !== selectedStatus) {
-        return false
-      }
-
-      if (selectedHazard !== 'ALL' && item.hazardType !== selectedHazard) {
-        return false
-      }
-
-      if (searchTerm.trim()) {
-        const query = searchTerm.toLowerCase().trim()
-        const match = [
-          item.reportNumber,
-          item.hazardType,
-          item.customHazardType,
-          item.description,
-          item.city,
-          item.district,
-          item.manualLocation,
-          item.citizenName,
-          item.citizenPhone,
-        ]
-          .filter(Boolean)
-          .some((val) => String(val).toLowerCase().includes(query))
-
-        if (!match) return false
-      }
-
-      return true
+      if (selectedStatus !== 'ALL' && item.status !== selectedStatus) return false
+      if (selectedHazard !== 'ALL' && item.hazardType !== selectedHazard) return false
+      if (!query) return true
+      return [
+        item.reportNumber,
+        item.hazardType,
+        item.customHazardType,
+        item.description,
+        item.city,
+        item.district,
+        item.manualLocation,
+        item.citizenName,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
     })
   }, [reports, selectedStatus, selectedHazard, searchTerm])
 
-  // Real backend metrics
-  const totalReports = reports.length
-  const pendingReports = reports.filter((r) => r.status === 'PENDING_VERIFICATION').length
-  const verifiedReports = reports.filter((r) => r.status === 'VERIFIED').length
-  const criticalHazards = reports.filter((r) =>
-    ['FLOOD', 'RISING_WATER', 'LANDSLIDE', 'FIRE'].includes(r.hazardType),
-  ).length
+  const countFor = (status: string) =>
+    status === 'ALL' ? reports.length : reports.filter((r) => r.status === status).length
+
+  const activeCoordinates = activeReport ? getCoordinates(activeReport) : null
+  const isPending = activeReport?.status === 'PENDING_VERIFICATION'
 
   return (
-    <div className="space-y-6">
-      {/* Scope Banner: District Switcher with "All Districts" */}
-      <div className="rounded-xl border border-teal-200 bg-gradient-to-r from-teal-50 via-emerald-50 to-teal-50/40 p-4 sm:p-5 shadow-xs">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3.5">
-            <div className="rounded-lg bg-teal-600 p-2 text-white shadow-xs">
-              {selectedDistrict === 'ALL' ? <Globe size={22} /> : <ShieldCheck size={22} />}
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="font-bold text-slate-900">
-                  {selectedDistrict === 'ALL' ? (
-                    <span>
-                      Active Scope: <span className="text-teal-700">All Districts (Islandwide)</span>
-                    </span>
-                  ) : (
-                    <span>
-                      Active Scope: <span className="text-teal-700">{selectedDistrict} District</span>
-                    </span>
-                  )}
-                </h3>
-                {selectedDistrict === registeredDistrict && registeredDistrict && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-semibold text-teal-800">
-                    <Shield size={12} />
-                    Registered Duty District
-                  </span>
-                )}
-                {selectedDistrict === 'ALL' && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800">
-                    <Globe size={12} />
-                    National DMC Operations
-                  </span>
-                )}
-              </div>
-              <p className="mt-0.5 text-xs text-slate-600">
-                {selectedDistrict === 'ALL'
-                  ? 'Displaying all live disaster reports across all administrative districts in Sri Lanka.'
-                  : `Filtered to disaster incident reports submitted for ${selectedDistrict} District.`}
-              </p>
-            </div>
-          </div>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">Disaster Reports</h2>
+          <p className="text-sm text-slate-500">
+            {countFor('PENDING_VERIFICATION')} pending verification
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowCreateModal(true)}
+          className="inline-flex items-center gap-2 rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
+        >
+          <Plus size={16} />
+          Log Incident
+        </button>
+      </div>
 
-          {/* District Switcher: Includes "All Districts" + All backend districts */}
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+        <div className="flex flex-wrap gap-1.5">
+          {STATUS_TABS.map((tab) => (
             <button
+              key={tab.id}
               type="button"
-              onClick={() => setSelectedDistrict('ALL')}
-              className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
-                selectedDistrict === 'ALL'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              onClick={() => setSelectedStatus(tab.id)}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                selectedStatus === tab.id
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              All Districts
+              {tab.label} <span className="opacity-70">{countFor(tab.id)}</span>
             </button>
-            {registeredDistrict && (
-              <button
-                type="button"
-                onClick={() => setSelectedDistrict(registeredDistrict)}
-                className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
-                  selectedDistrict === registeredDistrict
-                    ? 'bg-teal-600 text-white shadow-xs'
-                    : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                ★ {registeredDistrict}
-              </button>
-            )}
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-medium text-slate-500 whitespace-nowrap">
-                Switch District:
-              </span>
-              <select
-                value={selectedDistrict}
-                onChange={(e) => setSelectedDistrict(e.target.value)}
-                disabled={isLoadingDistricts && allDistricts.length === 0}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-xs outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
-              >
-                <option value="ALL">All Districts (Islandwide)</option>
-                {allDistricts.map((dist) => (
-                  <option key={dist} value={dist}>
-                    {dist} District {dist === registeredDistrict ? '★ (Registered)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          ))}
         </div>
-      </div>
-
-      {/* KPI Stats (dynamically calculated from backend data) */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                {selectedDistrict === 'ALL' ? 'Islandwide Reports' : `${selectedDistrict} Total`}
-              </p>
-              <p className="mt-2 text-3xl font-extrabold text-slate-900">
-                {isLoading ? '…' : totalReports}
-              </p>
-            </div>
-            <div className="rounded-lg bg-teal-50 p-2.5 text-teal-700">
-              <FileText size={20} />
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-slate-500">
-            {selectedDistrict === 'ALL'
-              ? 'Total incidents recorded islandwide'
-              : `Total incidents recorded in ${selectedDistrict}`}
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50/50 to-white p-5 shadow-xs">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-amber-700">
-                Pending Verification
-              </p>
-              <p className="mt-2 text-3xl font-extrabold text-amber-900">
-                {isLoading ? '…' : pendingReports}
-              </p>
-            </div>
-            <div className="rounded-lg bg-amber-100 p-2.5 text-amber-700">
-              <Clock size={20} />
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-amber-800 font-medium">
-            {pendingReports > 0 ? `${pendingReports} report(s) await officer review` : 'All reports verified'}
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/50 to-white p-5 shadow-xs">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-emerald-700">
-                Verified Incidents
-              </p>
-              <p className="mt-2 text-3xl font-extrabold text-emerald-900">
-                {isLoading ? '…' : verifiedReports}
-              </p>
-            </div>
-            <div className="rounded-lg bg-emerald-100 p-2.5 text-emerald-700">
-              <CheckCircle2 size={20} />
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-emerald-700">
-            Actionable disaster incidents verified
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-red-200 bg-gradient-to-br from-red-50/40 to-white p-5 shadow-xs">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-red-700">
-                Critical Hazards
-              </p>
-              <p className="mt-2 text-3xl font-extrabold text-red-900">
-                {isLoading ? '…' : criticalHazards}
-              </p>
-            </div>
-            <div className="rounded-lg bg-red-100 p-2.5 text-red-700">
-              <ShieldAlert size={20} />
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-red-700">
-            Floods, Landslides & Fires
-          </p>
-        </div>
-      </div>
-
-      {/* Control Bar: Filters, Search & Actions */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {/* Status Tabs */}
-            <div className="flex flex-wrap gap-1.5 border-b border-slate-100 pb-2 sm:border-0 sm:pb-0">
-              {[
-                { id: 'ALL', label: 'All Status' },
-                { id: 'PENDING_VERIFICATION', label: `Pending (${pendingReports})` },
-                { id: 'VERIFIED', label: 'Verified' },
-                { id: 'NEEDS_MORE_INFO', label: 'Needs Info' },
-                { id: 'REJECTED', label: 'Rejected' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setSelectedStatus(tab.id)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                    selectedStatus === tab.id
-                      ? 'bg-teal-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void fetchReports(selectedDistrict)}
-                disabled={isLoading}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                title="Refresh list from backend"
-              >
-                <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-                Refresh
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-teal-700 transition"
-              >
-                <Plus size={15} />
-                Log Incident Report
-              </button>
-            </div>
-          </div>
-
-          {/* Search and Hazard Filter */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1">
-              <Search
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder={
-                  selectedDistrict === 'ALL'
-                    ? 'Search all reports by #, hazard, location or citizen...'
-                    : `Search ${selectedDistrict} reports by #, hazard, location or citizen...`
-                }
-                className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-xs outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
-              />
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-
-            <div className="w-full sm:w-48">
-              <select
-                value={selectedHazard}
-                onChange={(e) => setSelectedHazard(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-xs font-medium text-slate-700 outline-none focus:border-teal-500"
-              >
-                <option value="ALL">All Hazard Types</option>
-                <option value="FLOOD">Flood</option>
-                <option value="RISING_WATER">Rising Water</option>
-                <option value="LANDSLIDE">Landslide</option>
-                <option value="LANDSLIDE_CRACK">Landslide Crack</option>
-                <option value="BLOCKED_ROAD">Blocked Road</option>
-                <option value="STRONG_WIND">Strong Wind</option>
-                <option value="FIRE">Fire</option>
-                <option value="EARTHQUAKE">Earthquake</option>
-                <option value="OTHER">Other</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Error state */}
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          <p className="font-semibold">Unable to load reports from backend</p>
-          <p className="mt-1 text-xs">{error}</p>
-        </div>
-      )}
-
-      {/* Reports Data View: Direct from backend */}
-      {isLoading && reports.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-12 text-center">
-          <RefreshCw size={28} className="mx-auto animate-spin text-teal-600" />
-          <p className="mt-3 text-sm font-semibold text-slate-800">
-            {selectedDistrict === 'ALL'
-              ? 'Fetching islandwide disaster reports from backend database...'
-              : `Fetching reports for ${selectedDistrict} District from backend database...`}
-          </p>
-        </div>
-      ) : filteredReports.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center">
-          <ShieldAlert size={36} className="mx-auto text-slate-400" />
-          <h4 className="mt-3 text-base font-bold text-slate-800">
-            {selectedDistrict === 'ALL'
-              ? 'No Disaster Reports Found in Database'
-              : `No Disaster Reports Found for ${selectedDistrict} District`}
-          </h4>
-          <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">
-            {searchTerm || selectedHazard !== 'ALL' || selectedStatus !== 'ALL'
-              ? 'No records match your active search filters. Try resetting the filters.'
-              : 'There are currently no disaster reports stored in the backend database for this selection.'}
-          </p>
-          <div className="mt-5 flex justify-center gap-3">
-            {(searchTerm || selectedHazard !== 'ALL' || selectedStatus !== 'ALL') && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedStatus('ALL')
-                  setSelectedHazard('ALL')
-                  setSearchTerm('')
-                }}
-                className="rounded-lg border border-slate-300 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Reset Filters
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowCreateModal(true)}
-              className="rounded-lg bg-teal-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-teal-700 shadow-xs"
-            >
-              Log Incident Report
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
-          <div className="border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-semibold text-slate-500">
-            Showing {filteredReports.length} report(s){' '}
-            {selectedDistrict === 'ALL' ? 'across all districts' : `in ${selectedDistrict} District`}
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {filteredReports.map((report) => {
-              const hazard = HAZARD_LABELS[report.hazardType] || HAZARD_LABELS.OTHER
-              const status = STATUS_CONFIG[report.status] || STATUS_CONFIG.DRAFT
-              const reportId = report._id || report.id
-
-              return (
-                <div
-                  key={reportId}
-                  className="flex flex-col gap-4 p-5 transition hover:bg-slate-50/70 lg:flex-row lg:items-center lg:justify-between"
-                >
-                  <div className="flex items-start gap-4">
-                    {/* Photo thumbnail or Hazard Icon */}
-                    {report.photoUrl ? (
-                      <button
-                        type="button"
-                        onClick={() => setPreviewImage(report.photoUrl || null)}
-                        className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100"
-                        title="Click to view full photo"
-                      >
-                        <img
-                          src={
-                            report.photoUrl.startsWith('http')
-                              ? report.photoUrl
-                              : `http://localhost:3000${report.photoUrl}`
-                          }
-                          alt={report.reportNumber}
-                          className="h-full w-full object-cover transition group-hover:scale-105"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none'
-                          }}
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition group-hover:opacity-100">
-                          <Maximize2 size={16} className="text-white" />
-                        </div>
-                      </button>
-                    ) : (
-                      <div
-                        className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border ${hazard.border} ${hazard.bg}`}
-                      >
-                        {report.hazardType === 'FLOOD' || report.hazardType === 'RISING_WATER' ? (
-                          <Waves className={hazard.color} size={26} />
-                        ) : report.hazardType === 'FIRE' ? (
-                          <Flame className={hazard.color} size={26} />
-                        ) : report.hazardType === 'STRONG_WIND' ? (
-                          <Wind className={hazard.color} size={26} />
-                        ) : (
-                          <AlertTriangle className={hazard.color} size={26} />
-                        )}
-                      </div>
-                    )}
-
-                    {/* Report Information */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-slate-900">
-                          {report.reportNumber}
-                        </span>
-
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold ${hazard.bg} ${hazard.color} ${hazard.border}`}
-                        >
-                          {hazard.label}
-                        </span>
-
-                        <span
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${status.bg} ${status.color}`}
-                        >
-                          <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
-                          {status.label}
-                        </span>
-
-                        {report.possibleDuplicate && (
-                          <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">
-                            Possible Duplicate
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="mt-1 line-clamp-2 text-xs text-slate-700 font-medium">
-                        {report.description || 'No detailed description provided.'}
-                      </p>
-
-                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin size={13} className="text-teal-600" />
-                          {report.city ? `${report.city}, ` : ''}
-                          <strong className="text-slate-700">
-                            {report.district || 'Unassigned'}
-                          </strong>
-                          {report.manualLocation &&
-                          report.manualLocation !== report.city &&
-                          report.manualLocation !== report.district
-                            ? ` (${report.manualLocation})`
-                            : ''}
-                        </span>
-
-                        <span className="inline-flex items-center gap-1">
-                          <User size={13} className="text-slate-400" />
-                          {report.citizenName || 'Citizen User'}
-                          {report.citizenPhone &&
-                            report.citizenPhone !== '—' &&
-                            ` • ${report.citizenPhone}`}
-                        </span>
-
-                        <span className="inline-flex items-center gap-1">
-                          <Calendar size={13} className="text-slate-400" />
-                          {report.submittedAt
-                            ? new Date(report.submittedAt).toLocaleDateString(undefined, {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : 'Recently'}
-                        </span>
-                      </div>
-
-                      {report.officerNotes && (
-                        <div className="mt-2 rounded-md bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">
-                          <strong className="font-semibold text-teal-800">Officer Notes:</strong>{' '}
-                          {report.officerNotes}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
-                    {report.status === 'PENDING_VERIFICATION' && (
-                      <button
-                        type="button"
-                        onClick={() => void handleQuickVerify(report)}
-                        disabled={isUpdatingStatus}
-                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50"
-                        title="Instantly verify report"
-                      >
-                        <Check size={14} />
-                        Quick Verify
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => openReportModal(report)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      <Eye size={14} />
-                      Review & Verify
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Review & Verification Modal */}
-      {activeReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-          <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between border-b border-slate-200 pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold text-slate-900">
-                    Incident Report #{activeReport.reportNumber}
-                  </h3>
-                  <span
-                    className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                      STATUS_CONFIG[activeReport.status]?.bg || ''
-                    } ${STATUS_CONFIG[activeReport.status]?.color || ''}`}
-                  >
-                    {STATUS_CONFIG[activeReport.status]?.label || activeReport.status}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  District: <strong className="text-teal-700">{activeReport.district || 'Unassigned'}</strong>
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setActiveReport(null)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="mt-5 space-y-5">
-              {/* Photo preview if available */}
-              {activeReport.photoUrl && (
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-900">
-                  <img
-                    src={
-                      activeReport.photoUrl.startsWith('http')
-                        ? activeReport.photoUrl
-                        : `http://localhost:3000${activeReport.photoUrl}`
-                    }
-                    alt={activeReport.reportNumber}
-                    className="max-h-64 w-full object-contain"
-                  />
-                </div>
-              )}
-
-              {/* Hazard details grid */}
-              <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="font-medium text-slate-400">Hazard Type</p>
-                  <p className="mt-1 font-bold text-slate-900">
-                    {HAZARD_LABELS[activeReport.hazardType]?.label || activeReport.hazardType}
-                  </p>
-                </div>
-
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="font-medium text-slate-400">District & City</p>
-                  <p className="mt-1 font-bold text-slate-900">
-                    {activeReport.city ? `${activeReport.city}, ` : ''}
-                    {activeReport.district || 'Unassigned'}
-                  </p>
-                  {activeReport.manualLocation && (
-                    <p className="text-[11px] text-slate-500">{activeReport.manualLocation}</p>
-                  )}
-                </div>
-
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="font-medium text-slate-400">Reported At</p>
-                  <p className="mt-1 font-bold text-slate-900">
-                    {activeReport.submittedAt
-                      ? new Date(activeReport.submittedAt).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      : '—'}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    {activeReport.submittedAt
-                      ? new Date(activeReport.submittedAt).toLocaleDateString()
-                      : ''}
-                  </p>
-                </div>
-              </div>
-
-              {/* GPS Coordinates & Map Link */}
-              {activeReport.latitude && activeReport.longitude && (
-                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
-                  <div className="flex items-center gap-2">
-                    <MapPin size={16} className="text-teal-600" />
-                    <span className="font-mono text-slate-700">
-                      GPS: {activeReport.latitude.toFixed(5)}, {activeReport.longitude.toFixed(5)}
-                    </span>
-                  </div>
-                  <a
-                    href={`https://www.google.com/maps?q=${activeReport.latitude},${activeReport.longitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-semibold text-teal-600 hover:text-teal-700"
-                  >
-                    Open in Maps ↗
-                  </a>
-                </div>
-              )}
-
-              {/* Reporter Info */}
-              <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-xs">
-                <p className="font-semibold text-slate-700">Citizen Reporter Details</p>
-                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-slate-600">
-                  <span>
-                    Name: <strong>{activeReport.citizenName || 'Citizen User'}</strong>
-                  </span>
-                  {activeReport.citizenPhone && (
-                    <span>
-                      Phone: <strong>{activeReport.citizenPhone}</strong>
-                    </span>
-                  )}
-                  {activeReport.citizenEmail && (
-                    <span>
-                      Email: <strong>{activeReport.citizenEmail}</strong>
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Description */}
-              <div>
-                <p className="text-xs font-semibold text-slate-700">Field Description</p>
-                <p className="mt-1 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-800 leading-relaxed">
-                  {activeReport.description || 'No detailed description provided by the citizen.'}
-                </p>
-              </div>
-
-              {/* Verification Form */}
-              <form onSubmit={handleSubmitVerification} className="border-t border-slate-200 pt-4 space-y-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                  Duty Officer Verification & Assessment
-                </h4>
-
-                {/* Status action buttons */}
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedVerificationStatus('VERIFIED')}
-                    className={`flex items-center justify-center gap-1.5 rounded-lg border py-2.5 text-xs font-semibold transition ${
-                      selectedVerificationStatus === 'VERIFIED'
-                        ? 'border-emerald-600 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-500/30'
-                        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <CheckCircle2 size={16} className="text-emerald-600" />
-                    Verify Report
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedVerificationStatus('NEEDS_MORE_INFO')}
-                    className={`flex items-center justify-center gap-1.5 rounded-lg border py-2.5 text-xs font-semibold transition ${
-                      selectedVerificationStatus === 'NEEDS_MORE_INFO'
-                        ? 'border-sky-600 bg-sky-50 text-sky-700 ring-2 ring-sky-500/30'
-                        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <Info size={16} className="text-sky-600" />
-                    Needs More Info
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedVerificationStatus('REJECTED')}
-                    className={`flex items-center justify-center gap-1.5 rounded-lg border py-2.5 text-xs font-semibold transition ${
-                      selectedVerificationStatus === 'REJECTED'
-                        ? 'border-rose-600 bg-rose-50 text-rose-700 ring-2 ring-rose-500/30'
-                        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <XCircle size={16} className="text-rose-600" />
-                    Reject Report
-                  </button>
-                </div>
-
-                {/* Officer Notes */}
-                <div>
-                  <label
-                    className="block text-xs font-semibold text-slate-700"
-                    htmlFor="officer-notes"
-                  >
-                    Officer Assessment / Response Notes
-                  </label>
-                  <textarea
-                    id="officer-notes"
-                    rows={2}
-                    value={verificationNotes}
-                    onChange={(e) => setVerificationNotes(e.target.value)}
-                    placeholder="Add operational notes, dispatch instructions, or verification comments..."
-                    className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-xs outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
-                  />
-                </div>
-
-                {/* Rejection reason (if rejected) */}
-                {selectedVerificationStatus === 'REJECTED' && (
-                  <div>
-                    <label
-                      className="block text-xs font-semibold text-rose-700"
-                      htmlFor="rejection-reason"
-                    >
-                      Rejection Reason *
-                    </label>
-                    <input
-                      id="rejection-reason"
-                      value={rejectionReason}
-                      onChange={(e) => setRejectionReason(e.target.value)}
-                      placeholder="Specify why this report is rejected (e.g. duplicate, false alarm, resolved)..."
-                      className="mt-1 w-full rounded-lg border border-rose-300 p-2 text-xs outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
-                      required
-                    />
-                  </div>
-                )}
-
-                {/* Submit buttons */}
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setActiveReport(null)}
-                    className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isUpdatingStatus}
-                    className="rounded-lg bg-teal-600 px-5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-teal-700 disabled:opacity-50"
-                  >
-                    {isUpdatingStatus ? 'Saving...' : 'Save Verification Status'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Image Preview Modal */}
-      {previewImage && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setPreviewImage(null)}
-        >
-          <div className="relative max-h-[90vh] max-w-4xl" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setPreviewImage(null)}
-              className="absolute -top-10 right-0 rounded-full bg-white/20 p-2 text-white hover:bg-white/40"
-            >
-              <X size={20} />
-            </button>
-            <img
-              src={
-                previewImage.startsWith('http')
-                  ? previewImage
-                  : `http://localhost:3000${previewImage}`
-              }
-              alt="Report Preview"
-              className="max-h-[85vh] rounded-lg object-contain"
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-56 flex-1">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by report number, location or citizen"
+              className="w-full rounded-md border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-teal-500"
             />
           </div>
+          <DropdownSelect
+            ariaLabel="Filter by district"
+            value={selectedDistrict}
+            onChange={setSelectedDistrict}
+            className="w-44"
+            buttonClassName="focus:border-teal-500 focus:ring-teal-500"
+            options={[
+              { value: 'ALL', label: 'All districts' },
+              ...allDistricts.map((d) => ({ value: d, label: d })),
+            ]}
+          />
+          <DropdownSelect
+            ariaLabel="Filter by hazard"
+            value={selectedHazard}
+            onChange={setSelectedHazard}
+            className="w-44"
+            buttonClassName="focus:border-teal-500 focus:ring-teal-500"
+            options={[
+              { value: 'ALL', label: 'All hazards' },
+              ...Object.entries(HAZARD_LABELS).map(([value, label]) => ({ value, label })),
+            ]}
+          />
+          <button
+            type="button"
+            title="Refresh"
+            onClick={() => void fetchReports(selectedDistrict)}
+            disabled={isLoading}
+            className="rounded-md border border-slate-300 p-2 text-slate-600 hover:bg-slate-50"
+          >
+            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>
+      )}
+
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        {isLoading && reports.length === 0 ? (
+          <p className="p-10 text-center text-sm text-slate-500">Loading reports…</p>
+        ) : filteredReports.length === 0 ? (
+          <p className="p-10 text-center text-sm text-slate-500">No reports match the current filters.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {filteredReports.map((report) => {
+              const status = STATUS_CONFIG[report.status] ?? STATUS_CONFIG.DRAFT
+              return (
+                <li
+                  key={reportKey(report)}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="font-mono text-xs font-semibold text-slate-900">
+                        {report.reportNumber}
+                      </span>
+                      <span className="font-medium text-slate-800">{hazardLabel(report)}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${status.badge}`}>
+                        {status.label}
+                      </span>
+                      {report.possibleDuplicate && (
+                        <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-800">
+                          Possible duplicate
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 truncate text-sm text-slate-600">{locationText(report)}</p>
+                    <p className="text-xs text-slate-400">
+                      {report.citizenName || 'Citizen'} · {formatDate(report.submittedAt || report.createdAt)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    {report.status === 'VERIFIED' && onIssueAlertFromReport && (
+                      <button
+                        type="button"
+                        onClick={() => onIssueAlertFromReport(report)}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+                      >
+                        <Megaphone size={13} />
+                        Issue Alert
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => openReview(report)}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      {report.status === 'PENDING_VERIFICATION' ? 'Review' : 'View'}
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+
+      {activeReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-slate-900">Report {activeReport.reportNumber}</h3>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      (STATUS_CONFIG[activeReport.status] ?? STATUS_CONFIG.DRAFT).badge
+                    }`}
+                  >
+                    {(STATUS_CONFIG[activeReport.status] ?? STATUS_CONFIG.DRAFT).label}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {hazardLabel(activeReport)} · {formatDate(activeReport.submittedAt || activeReport.createdAt)}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setActiveReport(null)}
+                className="rounded p-1.5 text-slate-400 hover:bg-slate-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid flex-1 gap-6 overflow-y-auto p-6 md:grid-cols-2">
+              <div className="space-y-4 text-sm">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">Location</p>
+                  <p className="mt-0.5 text-slate-800">{locationText(activeReport)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">Description</p>
+                  <p className="mt-0.5 whitespace-pre-line text-slate-800">
+                    {activeReport.description || 'No description provided.'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">Reported by</p>
+                  <p className="mt-0.5 text-slate-800">
+                    {[activeReport.citizenName, activeReport.citizenPhone, activeReport.citizenEmail]
+                      .filter(Boolean)
+                      .join(' · ') || 'Citizen'}
+                  </p>
+                </div>
+                {activeReport.photoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImage(activeReport.photoUrl || null)}
+                    className="block overflow-hidden rounded-md border border-slate-200"
+                  >
+                    <img
+                      src={photoSrc(activeReport.photoUrl)}
+                      alt={`Report ${activeReport.reportNumber}`}
+                      className="max-h-48 w-full object-cover"
+                    />
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                {activeCoordinates ? (
+                  <div className="overflow-hidden rounded-lg border border-slate-200">
+                    <div className="h-56">
+                      <MapContainer
+                        key={reportKey(activeReport)}
+                        center={activeCoordinates}
+                        zoom={13}
+                        scrollWheelZoom={false}
+                        className="h-full w-full"
+                      >
+                        <TileLayer
+                          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        />
+                        <Marker position={activeCoordinates} icon={incidentIcon} />
+                      </MapContainer>
+                    </div>
+                    <p className="border-t border-slate-200 px-3 py-1.5 text-xs text-slate-500">
+                      {activeCoordinates[0].toFixed(5)}, {activeCoordinates[1].toFixed(5)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="rounded-md border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500">
+                    This report has no GPS coordinates.
+                  </p>
+                )}
+
+                <form onSubmit={handleSubmitReview} className="space-y-3">
+                  {isPending ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {DECISIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setDecision(option.value)}
+                          className={`rounded-md border px-2 py-2 text-xs font-semibold ${
+                            decision === option.value
+                              ? option.selected
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700" htmlFor="officer-notes">
+                      Officer notes
+                    </label>
+                    <textarea
+                      id="officer-notes"
+                      rows={2}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      disabled={!isPending}
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-500 disabled:bg-slate-50"
+                    />
+                  </div>
+
+                  {isPending && decision === 'REJECTED' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700" htmlFor="rejection-reason">
+                        Rejection reason
+                      </label>
+                      <input
+                        id="rejection-reason"
+                        value={rejectionReason}
+                        onChange={(e) => setRejectionReason(e.target.value)}
+                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-rose-500"
+                      />
+                    </div>
+                  )}
+
+                  {!isPending && activeReport.rejectionReason && (
+                    <p className="text-sm text-rose-700">Rejected: {activeReport.rejectionReason}</p>
+                  )}
+                  {reviewError && <p className="text-sm font-medium text-red-700">{reviewError}</p>}
+                  {reviewNotice && <p className="text-sm font-medium text-emerald-700">{reviewNotice}</p>}
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setActiveReport(null)}
+                      className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Close
+                    </button>
+                    {isPending && (
+                      <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+                      >
+                        {isSaving ? 'Saving…' : 'Save decision'}
+                      </button>
+                    )}
+                    {activeReport.status === 'VERIFIED' && onIssueAlertFromReport && (
+                      <button
+                        type="button"
+                        onClick={() => issueAlert(activeReport)}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                      >
+                        <Megaphone size={14} />
+                        Issue Alert
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Log Incident Report Modal */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setPreviewImage(null)}
+        >
+          <img
+            src={photoSrc(previewImage)}
+            alt="Report preview"
+            className="max-h-[90vh] max-w-full rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+
       {showCreateModal && (
         <CreateIncidentModal
           token={token}
           districts={allDistricts}
-          defaultDistrict={selectedDistrict !== 'ALL' ? selectedDistrict : (registeredDistrict || allDistricts[0] || 'Colombo')}
+          defaultDistrict={
+            selectedDistrict !== 'ALL' ? selectedDistrict : registeredDistrict || allDistricts[0] || 'Colombo'
+          }
           onCreated={() => {
             setShowCreateModal(false)
             void fetchReports(selectedDistrict)
@@ -1146,248 +636,6 @@ export default function DisasterReportsSection({
           onCancel={() => setShowCreateModal(false)}
         />
       )}
-    </div>
-  )
-}
-
-// Modal for logging an incident report with dynamic backend districts
-interface CreateIncidentModalProps {
-  token: string
-  districts: string[]
-  defaultDistrict: string
-  onCreated: () => void
-  onCancel: () => void
-}
-
-function CreateIncidentModal({
-  token,
-  districts,
-  defaultDistrict,
-  onCreated,
-  onCancel,
-}: CreateIncidentModalProps) {
-  const [hazardType, setHazardType] = useState('FLOOD')
-  const [customHazard, setCustomHazard] = useState('')
-  const [district, setDistrict] = useState(defaultDistrict)
-  const [city, setCity] = useState('')
-  const [manualLocation, setManualLocation] = useState('')
-  const [description, setDescription] = useState('')
-  const [photo, setPhoto] = useState<File | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [errorMessage, setErrorMessage] = useState('')
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setErrorMessage('')
-
-    if (!description.trim() && !photo) {
-      setErrorMessage('Please provide a description or attach a photo.')
-      return
-    }
-
-    try {
-      setIsSubmitting(true)
-      const formData = new FormData()
-      formData.append('hazardType', hazardType)
-      if (hazardType === 'OTHER' && customHazard) {
-        formData.append('customHazardType', customHazard)
-      }
-      formData.append('district', district)
-      if (city) formData.append('city', city)
-      if (manualLocation) formData.append('manualLocation', manualLocation)
-      if (description) formData.append('description', description)
-      if (photo) formData.append('photo', photo)
-
-      const res = await fetch(`${API_URL}/reports`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      })
-
-      const result = await res.json().catch(() => null)
-      if (!res.ok) {
-        throw new Error(result?.message || 'Failed to submit report')
-      }
-
-      onCreated()
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Error submitting report')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-      <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-          <div>
-            <h3 className="text-lg font-bold text-slate-900">
-              Log Disaster Incident Report
-            </h3>
-            <p className="text-xs text-slate-500">
-              Submit a field incident report directly to the database.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        {errorMessage && (
-          <div className="mt-4 rounded-lg bg-red-50 p-3 text-xs text-red-700 font-medium">
-            {errorMessage}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700" htmlFor="hazard-type">
-              Hazard Type *
-            </label>
-            <select
-              id="hazard-type"
-              value={hazardType}
-              onChange={(e) => setHazardType(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-xs outline-none focus:border-teal-500"
-              required
-            >
-              <option value="FLOOD">Flood</option>
-              <option value="RISING_WATER">Rising Water</option>
-              <option value="LANDSLIDE">Landslide</option>
-              <option value="LANDSLIDE_CRACK">Landslide Crack</option>
-              <option value="BLOCKED_ROAD">Blocked Road</option>
-              <option value="STRONG_WIND">Strong Wind</option>
-              <option value="FIRE">Fire</option>
-              <option value="EARTHQUAKE">Earthquake</option>
-              <option value="OTHER">Other</option>
-            </select>
-          </div>
-
-          {hazardType === 'OTHER' && (
-            <div>
-              <label
-                className="block text-xs font-semibold text-slate-700"
-                htmlFor="custom-hazard"
-              >
-                Specify Hazard Type *
-              </label>
-              <input
-                id="custom-hazard"
-                value={customHazard}
-                onChange={(e) => setCustomHazard(e.target.value)}
-                placeholder="e.g. Chemical spill, Dam overflow..."
-                className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-xs outline-none focus:border-teal-500"
-                required
-              />
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label
-                className="block text-xs font-semibold text-slate-700"
-                htmlFor="district-select"
-              >
-                District *
-              </label>
-              <select
-                id="district-select"
-                value={district}
-                onChange={(e) => setDistrict(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-teal-500"
-                required
-              >
-                {districts.map((d) => (
-                  <option key={d} value={d}>
-                    {d} District
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700" htmlFor="city-input">
-                City / Town
-              </label>
-              <input
-                id="city-input"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="e.g. Gunnepana, Kandy..."
-                className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-xs outline-none focus:border-teal-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label
-              className="block text-xs font-semibold text-slate-700"
-              htmlFor="manual-location"
-            >
-              Specific Location / Landmark
-            </label>
-            <input
-              id="manual-location"
-              value={manualLocation}
-              onChange={(e) => setManualLocation(e.target.value)}
-              placeholder="e.g. Near Main Junction, Kelani River bank, Hospital road..."
-              className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-xs outline-none focus:border-teal-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700" htmlFor="report-desc">
-              Incident Description *
-            </label>
-            <textarea
-              id="report-desc"
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Provide complete details about observed water levels, damage, casualties or risks..."
-              className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-xs outline-none focus:border-teal-500"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700" htmlFor="report-photo">
-              Upload Verification Photo (Optional)
-            </label>
-            <input
-              id="report-photo"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(e) => setPhoto(e.target.files?.[0] || null)}
-              className="mt-1 w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-teal-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-teal-700 hover:file:bg-teal-100"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="rounded-lg bg-teal-600 px-5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-teal-700 disabled:opacity-50"
-            >
-              {isSubmitting ? 'Submitting...' : 'Submit Incident Report'}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   )
 }

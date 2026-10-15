@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+﻿import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Activity,
   AlertTriangle,
@@ -26,7 +26,9 @@ import CreateShelterForm from './CreateShelterForm'
 import EditShelterForm, { type ShelterToEdit } from './EditShelterForm'
 import ShelterMap, { type MapShelter } from './ShelterMap'
 import ReliefSuppliesPage from './ReliefSuppliesPage'
-import DisasterReportsSection from './DisasterReportsSection'
+import DisasterReportsSection, {
+  type DisasterReportItem,
+} from './DisasterReportsSection'
 import DisasterWarningsSection from './DisasterWarningsSection'
 import RescueTeamsSection from './RescueTeamsSection'
 
@@ -112,10 +114,20 @@ export default function DmcDashboard({
   const [searchTerm, setSearchTerm] = useState('')
   const [pendingReportsCount, setPendingReportsCount] = useState(0)
   const [activeWarningsCount, setActiveWarningsCount] = useState(0)
+  const [alertReportDraft, setAlertReportDraft] =
+    useState<DisasterReportItem | null>(null)
   const [rescueTeamsCount, setRescueTeamsCount] = useState(0)
+  const [newReportAlert, setNewReportAlert] = useState<{
+    count: number
+    latest: DisasterReportItem
+  } | null>(null)
+  const knownPendingIds = useRef<Set<string> | null>(null)
 
   useEffect(() => {
-    async function fetchPendingCount() {
+    knownPendingIds.current = null
+    let cancelled = false
+
+    async function fetchPendingReports() {
       try {
         const query = district
           ? `?district=${encodeURIComponent(district)}`
@@ -124,17 +136,42 @@ export default function DmcDashboard({
           headers: { Authorization: `Bearer ${token}` },
         })
         const data = await res.json()
-        const list = Array.isArray(data?.data) ? data.data : []
+        if (cancelled || !res.ok) return
+
+        const list: DisasterReportItem[] = Array.isArray(data?.data)
+          ? data.data
+          : []
         const pending = list.filter(
-          (r: any) => r.status === 'PENDING_VERIFICATION',
-        ).length
-        setPendingReportsCount(pending)
+          (report) => report.status === 'PENDING_VERIFICATION',
+        )
+        setPendingReportsCount(pending.length)
+
+        const keyOf = (report: DisasterReportItem) =>
+          report._id || report.id || report.reportNumber
+        const known = knownPendingIds.current
+        const fresh = known
+          ? pending.filter((report) => !known.has(keyOf(report)))
+          : []
+
+        knownPendingIds.current = new Set(pending.map(keyOf))
+
+        if (fresh.length > 0) {
+          setNewReportAlert({ count: fresh.length, latest: fresh[0] })
+        }
       } catch {
-        // silent fallback
+        // The next poll will retry.
       }
     }
-    void fetchPendingCount()
+
+    void fetchPendingReports()
+    const timer = window.setInterval(fetchPendingReports, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
   }, [token, district])
+
 
   useEffect(() => {
     async function fetchWarningsCount() {
@@ -265,10 +302,57 @@ export default function DmcDashboard({
   const utilization =
     totalCapacity > 0
       ? `${Math.round((currentOccupancy / totalCapacity) * 100)}%`
-      : '—'
+      : 'â€”'
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800">
+      {newReportAlert && (
+        <div
+          role="alert"
+          className="fixed right-4 top-4 z-[70] w-[22rem] max-w-[calc(100vw-2rem)] rounded-lg border border-amber-300 bg-white p-4 shadow-xl"
+        >
+          <div className="flex items-start gap-3">
+            <div className="rounded-full bg-amber-100 p-2 text-amber-700">
+              <Bell size={18} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-slate-900">
+                {newReportAlert.count === 1
+                  ? 'New citizen report received'
+                  : `${newReportAlert.count} new citizen reports received`}
+              </p>
+              <p className="mt-0.5 truncate text-xs text-slate-600">
+                {newReportAlert.latest.reportNumber} ·{' '}
+                {newReportAlert.latest.hazardType.replaceAll('_', ' ').toLowerCase()}
+                {newReportAlert.latest.district
+                  ? ` · ${newReportAlert.latest.city ? `${newReportAlert.latest.city}, ` : ''}${newReportAlert.latest.district}`
+                  : ''}
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewReportAlert(null)
+                    setShowCreateForm(false)
+                    setEditingShelter(null)
+                    setActiveSection('Disaster Reports')
+                  }}
+                  className="rounded-md bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700"
+                >
+                  Review report
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewReportAlert(null)}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Sidebar */}
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r border-slate-200 bg-white lg:flex">
         <div className="flex h-20 items-center gap-3 border-b border-slate-200 px-6">
@@ -291,6 +375,9 @@ export default function DmcDashboard({
                 key={label}
                 type="button"
                 onClick={() => {
+                  if (label !== 'Warning Alerts') {
+                    setAlertReportDraft(null)
+                  }
                   setActiveSection(label)
                   setShowCreateForm(false)
                   setEditingShelter(null)
@@ -469,13 +556,13 @@ export default function DmcDashboard({
                 <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <SummaryCard
                     title="Total Shelters"
-                    value={isLoadingShelters ? '…' : String(shelters.length)}
+                    value={isLoadingShelters ? 'â€¦' : String(shelters.length)}
                     description="Registered shelters returned by the API"
                     icon={<Building2 size={22} />}
                   />
                   <SummaryCard
                     title="Open Shelters"
-                    value={isLoadingShelters ? '…' : String(activeShelters)}
+                    value={isLoadingShelters ? 'â€¦' : String(activeShelters)}
                     description="Shelters with OPEN status"
                     icon={<House size={22} />}
                   />
@@ -483,7 +570,7 @@ export default function DmcDashboard({
                     title="Current Occupancy"
                     value={
                       isLoadingShelters
-                        ? '…'
+                        ? 'â€¦'
                         : currentOccupancy.toLocaleString()
                     }
                     description="People currently accommodated"
@@ -491,7 +578,7 @@ export default function DmcDashboard({
                   />
                   <SummaryCard
                     title="Capacity Utilization"
-                    value={isLoadingShelters ? '…' : utilization}
+                    value={isLoadingShelters ? 'â€¦' : utilization}
                     description="Occupancy compared with total capacity"
                     icon={<Activity size={22} />}
                   />
@@ -522,7 +609,7 @@ export default function DmcDashboard({
                         onClick={() => setActiveSection('Shelters')}
                         className="text-sm font-semibold text-teal-700 hover:text-teal-900"
                       >
-                        View shelters →
+                        View shelters â†’
                       </button>
                     </div>
                     {shelterError && (
@@ -561,7 +648,7 @@ export default function DmcDashboard({
                         onClick={() => setActiveSection('Disaster Reports')}
                         className="text-sm font-semibold text-teal-700 hover:text-teal-900"
                       >
-                        Review reports →
+                        Review reports â†’
                       </button>
                     </div>
                   </section>
@@ -593,7 +680,7 @@ export default function DmcDashboard({
                         onClick={() => setActiveSection('Warning Alerts')}
                         className="text-sm font-semibold text-teal-700 hover:text-teal-900"
                       >
-                        Issue / View →
+                        Issue / View â†’
                       </button>
                     </div>
                   </section>
@@ -625,7 +712,7 @@ export default function DmcDashboard({
                         onClick={() => setActiveSection('Rescue Teams')}
                         className="text-sm font-semibold text-teal-700 hover:text-teal-900"
                       >
-                        Manage teams →
+                        Manage teams â†’
                       </button>
                     </div>
                   </section>
@@ -665,7 +752,7 @@ export default function DmcDashboard({
                   {isLoadingShelters && shelters.length === 0 ? (
                     <div className="flex items-center justify-center gap-2 py-14 text-sm text-slate-500">
                       <RefreshCw size={18} className="animate-spin" />
-                      Loading shelter locations…
+                      Loading shelter locationsâ€¦
                     </div>
                   ) : shelters.length > 0 ? (
                     <ShelterMap shelters={shelters} />
@@ -840,6 +927,10 @@ export default function DmcDashboard({
                 assignedDistricts={assignedDistricts}
                 role={role}
                 onPendingCountChange={setPendingReportsCount}
+                onIssueAlertFromReport={(report) => {
+                  setAlertReportDraft(report)
+                  setActiveSection('Warning Alerts')
+                }}
               />
             )}
 
@@ -852,7 +943,10 @@ export default function DmcDashboard({
                 registeredDistrict={district}
                 assignedDistricts={assignedDistricts}
                 role={role}
+                shelters={shelters}
                 onActiveCountChange={setActiveWarningsCount}
+                reportDraft={alertReportDraft}
+                onReportDraftConsumed={() => setAlertReportDraft(null)}
               />
             )}
 
